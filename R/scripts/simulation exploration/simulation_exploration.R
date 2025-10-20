@@ -13,10 +13,10 @@ library(tidyverse)
 # load data ---------------------------------------------------------------
 
 # simulation results
-simul_results <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_10_25.csv')
+simul_results <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_20_25.csv')
 
 # first col is the pd index, then reorder to place level and forager first
-simul_results <- simul_results[2:length(simul_results)] |> 
+simul_results <- simul_results |> 
   relocate(forager, level)
 
 # cols as follows:
@@ -66,17 +66,14 @@ for(i in 1:length(df_file_names)) {
 expanded_df <- df
 rm(df)
 
+# or read in a single file
+expanded_df <- read_csv('data/simulation/expansion_chunks/exp_for11_lvl_1.csv')
+
 names(expanded_df)
 
 str(expanded_df)
 
 # clean
-expanded_df <- expanded_df |> 
-  mutate(
-    forager = as.factor(forager),
-    obj_ID = as.factor(obj_ID),
-    used = as.factor(used)
-  )
 
 # make used val for current collected coconut na
 expanded_df$used[which(is.na(expanded_df$turning_angle))] = NA
@@ -166,7 +163,7 @@ plot_cov_and_path <- function(
     for_num, lvl, col_num, cov = 'dist', path=simul_results, exp_df=expanded_df, 
     arr=arrangements
   ) {
-  if(for_num %in% c(10, 15, 43)) {
+  if(for_num %in% c(10, 11, 15, 43)) {
     strat = 'nn'
   }
   else if(for_num %in% c(13, 63, 80)) {
@@ -269,7 +266,31 @@ plot_cov_and_path <- function(
   return(p)
 }
 
-plot_cov_and_path(10, 1, 4, cov = 'ta')
+plot_cov_and_path(11, 1, 0, cov = 'ta')
+
+# view first 10 steps
+for(i in 0:9) {
+  if(i == 0) {
+    plots <- list()
+    plots[[i+1]] <- plot_cov_and_path(11, 1, i, cov = 'clst')
+  }
+  else {
+    plots[[i+1]] <- plot_cov_and_path(11, 1, i, cov = 'clst')
+  }
+}
+
+for(i in 1:length(plots)) {
+  print(plots[[i]])
+  
+  ans <- readline('View next step? y/n')
+  
+  if(ans == 'y') {
+    # continue
+  }
+  else if(ans == 'n') {
+    break
+  }
+}
 
 expanded_df |> 
   group_by(forager) |> 
@@ -392,13 +413,19 @@ simul_performance |>
   summary()
 
 # see how performance varied across levels and one weight at a time
-simul_performance |>
-  filter(strategy == 'nn') |> 
+simul_results |>
+  group_by(strategy, forager, level) |> 
+  summarize(
+    total_time = max(time), 
+    total_dist = sum(dist), 
+    ta_wt = unique(ta_weight), 
+    nn_wt = unique(nn_weight), 
+    clst_wt = unique(clst_weight)
+  ) |> 
   ggplot() +
-  geom_point(aes(x = ta_wt, y = rmi, color = as.factor(level))) +
   geom_vline(aes(xintercept = 0), linetype = 'dashed', linewidth = .25, color = 'black') +
-  geom_point(aes(x = nn_wt, y = total_time, color = as.factor(level))) +
-  scale_color_viridis_d(guide = 'none', option = 'rocket', begin = .3, end = .9) +
+  geom_point(aes(x = nn_wt, y = total_time, color = as.factor(strategy))) +
+  scale_color_viridis_d(option = 'rocket', begin = .3, end = .9) +
   theme_bw() +
   facet_wrap(~level)
 

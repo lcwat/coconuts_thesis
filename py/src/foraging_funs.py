@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 
 
 # cluster values require comparison of distances between obj
@@ -115,7 +114,7 @@ def cluster_value(
             # coconut
             cluster_val_list.append(
                 np.sum(
-                    np.reciprocal(sorted(active_obj_dists)[1:num_neighbors])
+                    np.reciprocal(sorted(active_obj_dists)[1:num_neighbors+1])
                 )
             )
     else:
@@ -128,7 +127,7 @@ def cluster_value(
             # coconut
             cluster_val_list.append(
                 np.sum(
-                    np.reciprocal(sorted(active_obj_dists)[1:num_neighbors])
+                    np.reciprocal(sorted(active_obj_dists)[1:num_neighbors+1])
                 )
             )
 
@@ -342,3 +341,87 @@ def run_foraging_agent(
     })
 
     return forage_df
+
+
+# simulating forages by agents valuing heuristics differently
+def simulate_forages(
+    n_agents=100, lvl_obj_locs=all_coco_location_data, lvl_dist_ms=d,
+    wt_dist_par=[0, 1]
+):
+
+    # strats
+    strat_list = ['nn', 'ta', 'clst']
+
+    # run through each foraging strategy
+    for strat_i in range(0, len(strat_list)):
+
+        # loop through agent pool
+        for agent_no in tqdm(range(n_agents)):
+
+            # assign unique weights
+            weights = np.random.normal(wt_dist_par[0], wt_dist_par[1], 4)
+            # fix points to 1
+            weights[3] = 1
+
+            if strat_list[strat_i] == 'nn':
+                weights[[1, 2]] = 0
+            if strat_list[strat_i] == 'ta':
+                weights[[0, 2]] = 0
+            if strat_list[strat_i] == 'clst':
+                weights[[0, 1]] = 0
+
+            # loop through levels
+            for level_no in range(10):
+
+                # set the level locations and dist matrix to use
+                lvl = lvl_obj_locs[lvl_obj_locs.level == level_no+1]
+                lvl_m = lvl_dist_ms[level_no]
+
+                # let agent play the level and record results
+                forage_results = run_foraging_agent(
+                    lvl_coco_locs=lvl, lvl_dist_m=lvl_m, weights=weights,
+                    rps=[0, .01], clust_neighbors=2
+                )
+
+                # add level and agent identifiers
+                info_dict = {
+                    'strategy': [strat_list[strat_i] for i in range(len(forage_results))],
+                    'forager': [agent_no for i in range(len(forage_results))],
+                    'level': [level_no+1 for i in range(len(forage_results))]
+                }
+
+                # add to df
+                forage_results = forage_results.assign(**info_dict)
+
+                # if first run, init the df
+                if (strat_i == 0) and (agent_no == 0) and (level_no == 0):
+                    # create csv file
+                    forage_results.to_csv(
+                        '../../data/simulation/runs/pure_strats/simul_weighted_forages_10_20_25.csv',
+                        index=False
+                    )
+                # add to complete file
+                else:
+                    forage_results.to_csv(
+                        '../../data/simulation/runs/pure_strats/simul_weighted_forages_10_20_25.csv',
+                        mode='a', index=False, header=False
+                    )
+
+                # wipe from memory
+                del forage_results
+
+    print('Completed all forages.')
+
+########################################################################
+# Run foragers with pure strategies
+########################################################################
+
+
+all_coco_location_data = pd.read_csv(
+    "../../data/level_arrangements/all_levels_arrangements.csv"
+)
+
+d = create_distance_matrices(all_coco_location_data)
+
+
+simulate_forages(n_agents=1, wt_dist_par=[2, 1])
