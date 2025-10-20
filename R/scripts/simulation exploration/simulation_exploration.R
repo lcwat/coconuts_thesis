@@ -1,9 +1,7 @@
 # Luke Watson
 # 10/25
 
-# this script will explore the results of recent simulation in python 
-
-# simulate pure strategies first rather than mixture as i've done now
+# this script will explore the results of strategy simulation
 
 # load libraries ----------------------------------------------------------
 
@@ -15,20 +13,7 @@ library(tidyverse)
 # load data ---------------------------------------------------------------
 
 # simulation results
-simul_results <- read_csv('data/simulation/simul_weighted_forages_10_10_25.csv')
-
-# level arrangements
-arrangements <- read_csv('object arrangements/all-levels-arrangement.csv')
-
-<<<<<<< HEAD
-# load full performance file
-simul_performance <- read_csv('data/simulation/simul_performance_10_10_25.csv')
-=======
-simul_performance <- read_csv('data/simulation/simul_performance_10_3_25.csv')
-
-# expanded df to play with and see if everything looks kosher
-simul_expanded <- read_csv('data/simulation/expanded_simul_w_cov_10_9_25.csv')
->>>>>>> 6f53e0919e14c8acd0054f35a49d062cb7e7faff
+simul_results <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_10_25.csv')
 
 # first col is the pd index, then reorder to place level and forager first
 simul_results <- simul_results[2:length(simul_results)] |> 
@@ -55,10 +40,53 @@ simul_results |>
     clst_wt = mean(clst_weight)
   )
 
+# level arrangements
+arrangements <- read_csv('data/level_arrangements/all_levels_arrangements.csv')
+
+
+# find file names
+df_file_names <- list.files('data/simulation/expansion_chunks')
+
+# load expanded dfs and concat into one dataset
+for(i in 1:length(df_file_names)) {
+  
+  if(i == 1) {
+    # init df
+    df <- read_csv(paste0('data/simulation/expansion_chunks/', df_file_names[i]))
+  }
+  else {
+    # add to df
+    df_to_add <- read_csv(paste0('data/simulation/expansion_chunks/', df_file_names[i]))
+    
+    df <- rbind(df, df_to_add)
+  }
+}
+
+# rename df
+expanded_df <- df
+rm(df)
+
+names(expanded_df)
+
+str(expanded_df)
+
+# clean
+expanded_df <- expanded_df |> 
+  mutate(
+    forager = as.factor(forager),
+    obj_ID = as.factor(obj_ID),
+    used = as.factor(used)
+  )
+
+# make used val for current collected coconut na
+expanded_df$used[which(is.na(expanded_df$turning_angle))] = NA
+expanded_df$neighbor_value[which(is.na(expanded_df$turning_angle))] = NA
+expanded_df$distance[which(is.na(expanded_df$turning_angle))] = NA
+
 
 # source functions --------------------------------------------------------
 
-source('scripts/fun/entropy.R') # rmi
+source('R/scripts/src/entropy.R') # rmi
 
 
 # statistics --------------------------------------------------------------
@@ -130,42 +158,149 @@ write_csv(simul_performance, 'data/simulation/simul_performance_10_10_25.csv')
 
 # covariate visualization -------------------------------------------------
 
-for_num <- 1
-lvl <- 2
-col_num <- 0
+unique(expanded_df$forager)
 
-# filter for path
-path_df <- simul_results |> 
-  filter(forager == for_num & level == lvl)
+# nn: 10, 15, 43, ta: 13, 63, 80, clst: 27, 90, 98
 
-# look at nn
-simul_expanded |> 
-  filter(forager == for_num & level == lvl & collection_num == col_num) |> 
-  left_join(arrangements, by = join_by(level, obj_ID, point_value)) |> 
+plot_cov_and_path <- function(
+    for_num, lvl, col_num, cov = 'dist', path=simul_results, exp_df=expanded_df, 
+    arr=arrangements
+  ) {
+  if(for_num %in% c(10, 15, 43)) {
+    strat = 'nn'
+  }
+  else if(for_num %in% c(13, 63, 80)) {
+    strat = 'ta'
+  }
+  else {
+    strat = 'clst'
+  }
+  
+  # filter for path
+  path_df <- path |> 
+    filter(strategy == strat & forager == for_num & level == lvl) |> 
+    add_row(
+      strategy = simul_results$strategy[1], forager = for_num, level = lvl, 
+      nn_weight = simul_results$nn_weight[1], 
+      ta_weight = simul_results$ta_weight[1], clst_weight = simul_results$clst_weight[1],
+      pv_weight = simul_results$pv_weight[1], obj_ID = 0, x = 0, y = 0, time = 0, dist = 0,
+      point_value = 0, points = 0,
+      .before = 1
+    ) |> 
+    slice_head(n=col_num+2)
+  
+  if(cov == 'dist') {
+    # look at nn
+    p <- exp_df |> 
+      filter(forager == for_num & level == lvl & collection_num == col_num) |> 
+      left_join(arr, by = join_by(level, obj_ID, point_value)) |> 
+      ggplot() +
+      geom_path(
+        data = path_df, aes(x = x, y = y), linewidth = .2, 
+        arrow = arrow(type = 'closed')
+      ) +
+      geom_point(
+        aes(
+          x = x, y = y, size = as.factor(point_value), color = (1/distance), 
+          shape = as.factor(used)
+        )
+      ) +
+      scale_shape_manual(
+        '', labels = c('Unused', 'Used'), values = c(16, 17), na.value = 13
+      ) +
+      scale_size_discrete(guide = 'none', range = c(3,5)) +
+      scale_color_viridis_c(
+        'Distance value', option = 'magma', end = .9, na.value = 'black', 
+        n.breaks = 5
+      ) +
+      theme_void()
+  } else if(cov == 'ta') {
+    # look at nn
+    p <- exp_df |> 
+      filter(forager == for_num & level == lvl & collection_num == col_num) |> 
+      left_join(arr, by = join_by(level, obj_ID, point_value)) |> 
+      ggplot() +
+      geom_path(
+        data = path_df, aes(x = x, y = y), linewidth = .2, 
+        arrow = arrow(type = 'closed')
+      ) +
+      geom_point(
+        aes(
+          x = x, y = y, size = as.factor(point_value), color = cos(turning_angle), 
+          shape = as.factor(used)
+        )
+      ) +
+      scale_shape_manual(
+        '', labels = c('Unused', 'Used'), values = c(16, 17), na.value = 13
+      ) +
+      scale_size_discrete(guide = 'none', range = c(3,5)) +
+      scale_color_viridis_c(
+        'Turning angle value', option = 'magma', end = .9, na.value = 'black',
+        n.breaks = 5
+      ) +
+      theme_void()
+  } else if(cov == 'clst') {
+    # look at nn
+    p <- exp_df |> 
+      filter(forager == for_num & level == lvl & collection_num == col_num) |> 
+      left_join(arr, by = join_by(level, obj_ID, point_value)) |> 
+      ggplot() +
+      geom_path(
+        data = path_df, aes(x = x, y = y), linewidth = .2, 
+        arrow = arrow(type = 'closed')
+      ) +
+      geom_point(
+        aes(
+          x = x, y = y, size = as.factor(point_value), color = neighbor_value, 
+          shape = as.factor(used)
+        )
+      ) +
+      scale_shape_manual(
+        '', labels = c('Unused', 'Used'), values = c(16, 17), na.value = 13
+      ) +
+      scale_size_discrete(guide = 'none', range = c(3,5)) +
+      scale_color_viridis_c(
+        'Cluster value', option = 'magma', end = .9, na.value = 'black', 
+        n.breaks = 5
+      ) +
+      theme_void()
+  }
+  
+  return(p)
+}
+
+plot_cov_and_path(10, 1, 4, cov = 'ta')
+
+expanded_df |> 
+  group_by(forager) |> 
+  summarize(
+    strat = unique(strategy)
+  )
+
+simul_results |> 
+  filter(strategy == 'clst' & forager == 27 & level == 1) |> 
+  add_row(x = 0, y = 0, time = 0, .before = 1) |> 
+  slice_head(n = 5) |> 
   ggplot() +
-  geom_path(data = path_df, aes(x = x, y = y), linewidth = .2) +
-  geom_point(aes(
-    x = x, y = y, size = as.factor(point_value), color = cos(turning_angle), 
-    shape = as.factor(used)
-  )) +
-  scale_size_discrete(guide = 'none', range = c(3,5)) +
-  scale_color_viridis_c(option = 'magma', end = .8, na.value = 'grey95') +
+  geom_path(aes(x = x, y = y, color = time)) +
+  geom_point(data = arrangements[arrangements$level == 1,], aes(x = x, y = y)) +
   theme_void()
 
-#
+# check ta code for the expansion, appears to not be using the correct heading angle
+# on every other collection for some reason. could be due to the wrong obj being
+# used. ta appears to be working in the simulation though 
+
+# could also be an issue with the heading starting from the first obs, carrying over through
+# to every other subsequent collection. i think the issue could be coming from 
+# defining the heading from the previous two objects, with the first obs the 
+# heading should be defined by the angle between 0 and the first obs
 
 # path visualization ------------------------------------------------------
 
 
 # view the path ran by a particular forager on a particular level
-<<<<<<< HEAD
-plot_path <- function(
-    forager_id, level_id, data=simul_results, arr=arrangements,
-    perf_metrics=simul_performance
-  ) {
-=======
+
 plot_path <- function(strat, forager_id, level_id, data=simul_results, arr=arrangements) {
->>>>>>> c556684af7c37df0890fa0bd204f9c6ee4563f07
   
   # filter arrangements for level
   arr <- arr |> 
@@ -218,19 +353,11 @@ plot_path <- function(strat, forager_id, level_id, data=simul_results, arr=arran
 }
 
 # view the paths
-<<<<<<< HEAD
-plot_path(75, 6)
-
-# view all agent paths on a level
-simul_results |>
-  filter(level == 2) |> 
-=======
 plot_path('nn', 42, 6)
 
 # view all agent paths on a level
 simul_results |>
   filter(strategy == 'clst' & level == 3) |> 
->>>>>>> c556684af7c37df0890fa0bd204f9c6ee4563f07
   ggplot(aes(x = x, y = y, color = as.factor(forager))) +
   geom_path(linewidth = .2) +
   scale_color_discrete(guide = 'none') +
@@ -257,23 +384,7 @@ simul_results |>
 
 # ta weirdly reports no traplining while the plots indicate what looks like 
 # perfect traplining, perhaps there was some sort of issue in rmi calc
-s <- simul_results |> 
-  filter(strategy == 'ta' & level == 1 & forager == 0) |> 
-  pull(obj_ID)
 
-m <- matrix(nrow = length(s), ncol = length(s))
-
-for(i in 1:length(s)) {
-  for(j in 1:length(s)) {
-    if(s[i] == s[j]) {
-      m[i,j] = 1
-    }
-  }
-}
-
-s[2] == s[3]
-
-as.data.frame(m)
 
 # distributions
 simul_performance |> 
@@ -284,12 +395,9 @@ simul_performance |>
 simul_performance |>
   filter(strategy == 'nn') |> 
   ggplot() +
-<<<<<<< HEAD
   geom_point(aes(x = ta_wt, y = rmi, color = as.factor(level))) +
-=======
   geom_vline(aes(xintercept = 0), linetype = 'dashed', linewidth = .25, color = 'black') +
   geom_point(aes(x = nn_wt, y = total_time, color = as.factor(level))) +
->>>>>>> c556684af7c37df0890fa0bd204f9c6ee4563f07
   scale_color_viridis_d(guide = 'none', option = 'rocket', begin = .3, end = .9) +
   theme_bw() +
   facet_wrap(~level)
