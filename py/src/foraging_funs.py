@@ -345,8 +345,8 @@ def run_foraging_agent(
 
 # simulating forages by agents valuing heuristics differently
 def simulate_forages(
-    n_agents=100, lvl_obj_locs=all_coco_location_data, lvl_dist_ms=d,
-    wt_dist_par=[0, 1]
+    n_agents=100, lvl_obj_locs=pd.DataFrame, lvl_dist_ms=list,
+    wt_dist_par=[0, 1], file_string=str
 ):
 
     # strats
@@ -380,7 +380,7 @@ def simulate_forages(
                 # let agent play the level and record results
                 forage_results = run_foraging_agent(
                     lvl_coco_locs=lvl, lvl_dist_m=lvl_m, weights=weights,
-                    rps=[0, .01], clust_neighbors=2
+                    rps=[0, .05], clust_neighbors=2
                 )
 
                 # add level and agent identifiers
@@ -397,13 +397,13 @@ def simulate_forages(
                 if (strat_i == 0) and (agent_no == 0) and (level_no == 0):
                     # create csv file
                     forage_results.to_csv(
-                        '../../data/simulation/runs/pure_strats/simul_weighted_forages_10_20_25.csv',
+                        'data/simulation/runs/pure_strats/'+file_string,
                         index=False
                     )
                 # add to complete file
                 else:
                     forage_results.to_csv(
-                        '../../data/simulation/runs/pure_strats/simul_weighted_forages_10_20_25.csv',
+                        'data/simulation/runs/pure_strats/'+file_string,
                         mode='a', index=False, header=False
                     )
 
@@ -418,10 +418,13 @@ def simulate_forages(
 
 
 all_coco_location_data = pd.read_csv(
-    "../../data/level_arrangements/all_levels_arrangements.csv"
+    "data/level_arrangements/all_levels_arrangements.csv"
 )
 
 d = create_distance_matrices(all_coco_location_data)
 
 
-simulate_forages(n_agents=1, wt_dist_par=[2, 1])
+simulate_forages(
+    n_agents=100, lvl_obj_locs=all_coco_location_data, lvl_dist_ms=d,
+    wt_dist_par=[1, .3], file_string='simul_weighted_forages_10_20_25.csv'
+)

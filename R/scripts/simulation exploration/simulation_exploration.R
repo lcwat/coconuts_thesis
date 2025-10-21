@@ -6,6 +6,8 @@
 # load libraries ----------------------------------------------------------
 
 library(tidyverse)
+library(ggridges)
+library(showtext)
 # library(plotly)
 # library(lme4)
 # library(performance)
@@ -408,12 +410,7 @@ simul_results |>
 
 
 # distributions
-simul_performance |> 
-  filter(strategy == 'ta') |> 
-  summary()
-
-# see how performance varied across levels and one weight at a time
-simul_results |>
+simul_performance <- simul_results |>
   group_by(strategy, forager, level) |> 
   summarize(
     total_time = max(time), 
@@ -421,8 +418,58 @@ simul_results |>
     ta_wt = unique(ta_weight), 
     nn_wt = unique(nn_weight), 
     clst_wt = unique(clst_weight)
-  ) |> 
-  ggplot() +
+  )
+
+clrs <- NatParksPalettes::natparks.pals('Everglades')
+showtext_opts(dpi = 300)
+showtext_auto()
+font_paths('C:\\Users\\lcwat\\AppData\\Local\\Microsoft\\Windows\\Fonts')
+font_add('Aptos', regular = 'Aptos.ttf')
+
+simul_performance |> 
+  ggplot(
+    aes(
+      x = total_time, y = as.factor(level), fill = as.factor(strategy), 
+      color = as.factor(strategy)
+    )
+  ) +
+  geom_density_ridges(alpha = .3) +
+  # geom_point(position = position_jitterdodge(jitter.height = .15, dodge.width = -.3)) +
+  scale_x_continuous(n.breaks = 10) +
+  scale_color_manual(
+    'Strategy', values = c(clrs[1], clrs[6], clrs[4]), 
+    labels = c('Cluster', 'Nearest neighbor', 'Turning angle')
+  ) +
+  scale_fill_manual(
+    'Strategy', values = c(clrs[1], clrs[6], clrs[4]), 
+    labels = c('Cluster', 'Nearest neighbor', 'Turning angle')
+  ) +
+  labs(x = 'Time (s)', y = 'Game level') +
+  theme_bw() +
+  theme(
+    panel.border = element_blank(), 
+    panel.grid.major.y = element_blank(), 
+    axis.line.x = element_line(color = 'grey20', linewidth = .75),
+    axis.line.y = element_blank(),
+    axis.ticks.x = element_line(color = 'grey20', linewidth = .5), 
+    axis.ticks.y = element_blank(),
+    text = element_text(family = 'Aptos'),
+    axis.text = element_text(size = 10), 
+    axis.title = element_text(size = 14, face = 'bold'), 
+    legend.text = element_text(size = 10), 
+    legend.title = element_text(size = 14, face = 'bold'),
+    legend.position = 'top', 
+    legend.justification = 'left', 
+    legend.direction = 'horizontal'
+  )
+
+ggsave(
+  'fig_output/simulation/pure_strat_time_comp_ridges.png', device = 'png', 
+  height = 10, width = 8, units = 'in', dpi = 300
+)
+
+# see how performance varied across levels and one weight at a time
+ggplot() +
   geom_vline(aes(xintercept = 0), linetype = 'dashed', linewidth = .25, color = 'black') +
   geom_point(aes(x = nn_wt, y = total_time, color = as.factor(strategy))) +
   scale_color_viridis_d(option = 'rocket', begin = .3, end = .9) +
