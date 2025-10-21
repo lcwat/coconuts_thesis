@@ -101,14 +101,18 @@ simul_performance <- simul_results |>
     total_time = max(time), 
     total_dist = sum(dist)
   )
+strats = unique(simul_performance$strategy)
 
 simul_results |> 
-  filter(strategy == 'ta' & forager == 0 & level == 2) |> 
+  filter(strategy == strats[1] & forager == 0 & level == 1) |> 
   pull(obj_ID) |> 
   entropy()
 
 # find entropy of each run
-rmis <- vector('numeric', length = nrow(simul_performance))
+rmis <- vector('numeric')
+strats <- vector('character')
+foragers <- vector('numeric')
+levels <- vector('numeric')
 
 # loop through strategies
 for(strat in unique(simul_performance$strategy)) {
@@ -120,32 +124,35 @@ for(strat in unique(simul_performance$strategy)) {
     for(j in 1:10) {
       
       # grab sequence of collections
-      seq <- simul_results |> 
+      e <- simul_results |> 
         filter(strategy == strat & forager == i & level == j) |> 
-        pull(obj_ID)
-      
-      # calc entropy
-      e <- entropy(SEQ = seq, max3 = 110, max4 = 30, max5 = 10)
+        pull(obj_ID) |> 
+        entropy()
       
       # one minus the minimum e approximates the routine movement index
       rmi <- 1 - min(e)
       
-      # update index
-      if(strat != 'clst') {
-        index = index + 1
-      }
-      else if(i == 0 & j == 1) {
-        index = j
-      }
+      # add to vector
+      rmis <- c(rmis, rmi)
+      strats <- c(strats, strat)
+      foragers <- c(foragers, i)
+      levels <- c(levels, j)
       
-      rmis[index] = rmi
-      
-      cat('\rCompleted forager', i, 'level', j, '.')
+      cat('\rCompleted', strat, 'forager', i, 'level', j, '.')
     }
   }
 }
 
+# put into tibble
+rmi_tibble <- tibble(
+  strategy = strats, forager = foragers, level = levels, rmi = rmis
+)
 
+rmi_tibble |> 
+  ggplot(aes(x = rmi, fill = as.factor(strategy))) + 
+  geom_density(alpha = .3) +
+  theme_bw() +
+  facet_wrap(~level)
 
 # merge with performance data
 simul_performance <- simul_performance |> 
@@ -464,7 +471,7 @@ simul_performance |>
   )
 
 ggsave(
-  'fig_output/simulation/pure_strat_time_comp_ridges.png', device = 'png', 
+  'fig_output/simulation/pure_strat_rmi_comp_ridges.png', device = 'png', 
   height = 10, width = 8, units = 'in', dpi = 300
 )
 
@@ -475,6 +482,43 @@ ggplot() +
   scale_color_viridis_d(option = 'rocket', begin = .3, end = .9) +
   theme_bw() +
   facet_wrap(~level)
+
+rmi_tibble |> 
+  ggplot(
+    aes(
+      x = rmi, y = as.factor(level), fill = as.factor(strategy), 
+      color = as.factor(strategy)
+    )
+  ) +
+  geom_density_ridges(alpha = .3) +
+  # geom_point(position = position_jitterdodge(jitter.height = .15, dodge.width = -.3)) +
+  scale_x_continuous(n.breaks = 10) +
+  scale_color_manual(
+    'Strategy', values = c(clrs[1], clrs[6], clrs[4]), 
+    labels = c('Cluster', 'Nearest neighbor', 'Turning angle')
+  ) +
+  scale_fill_manual(
+    'Strategy', values = c(clrs[1], clrs[6], clrs[4]), 
+    labels = c('Cluster', 'Nearest neighbor', 'Turning angle')
+  ) +
+  labs(x = 'RMI', y = 'Game level') +
+  theme_bw() +
+  theme(
+    panel.border = element_blank(), 
+    panel.grid.major.y = element_blank(), 
+    axis.line.x = element_line(color = 'grey20', linewidth = .75),
+    axis.line.y = element_blank(),
+    axis.ticks.x = element_line(color = 'grey20', linewidth = .5), 
+    axis.ticks.y = element_blank(),
+    text = element_text(family = 'Aptos'),
+    axis.text = element_text(size = 10), 
+    axis.title = element_text(size = 14, face = 'bold'), 
+    legend.text = element_text(size = 10), 
+    legend.title = element_text(size = 14, face = 'bold'),
+    legend.position = 'top', 
+    legend.justification = 'left', 
+    legend.direction = 'horizontal'
+  )
 
 # for the pure strategies, it is apparent that nn performs the best with regards 
 # to time and distance. 
