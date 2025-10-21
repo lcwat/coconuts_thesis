@@ -155,11 +155,10 @@ rmi_tibble |>
   facet_wrap(~level)
 
 # merge with performance data
-simul_performance <- simul_performance |> 
-  add_column(rmi = rmis)
+simul_performance_and_rmi <- left_join(simul_performance, rmi_tibble) 
 
 # write
-write_csv(simul_performance, 'data/simulation/simul_performance_10_10_25.csv')
+write_csv(simul_performance_and_rmi, 'data/simulation/performance/perf_and_rmi_summary.csv')
 
 
 # covariate visualization -------------------------------------------------
