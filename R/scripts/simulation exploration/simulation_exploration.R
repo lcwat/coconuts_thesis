@@ -19,7 +19,7 @@ simul_results <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forag
 
 # first col is the pd index, then reorder to place level and forager first
 simul_results <- simul_results |> 
-  relocate(forager, level)
+  relocate(strategy, forager, level)
 
 # cols as follows:
 # forager = agent id
@@ -49,16 +49,43 @@ arrangements <- read_csv('data/level_arrangements/all_levels_arrangements.csv')
 # find file names
 df_file_names <- list.files('data/simulation/expansion_chunks')
 
+nn_names <- df_file_names[str_detect(df_file_names, '_nn_')]
+
 # load expanded dfs and concat into one dataset
 for(i in 1:length(df_file_names)) {
   
+  if(str_detect(df_file_names[i], '_clst_')) {
+    clst_df <- read_csv(
+      paste0('data/simulation/expansion_chunks/', df_file_names[i]), 
+      show_col_types = F
+    )
+  }
+  else if(str_detect(df_file_names[i], '_nn_')) {
+    nn_df <- read_csv(
+      paste0('data/simulation/expansion_chunks/', df_file_names[i]), 
+      show_col_types = F
+    )
+  }
+  else {
+    ta_df <- read_csv(
+      paste0('data/simulation/expansion_chunks/', df_file_names[i]), 
+      show_col_types = F
+    )
+  }
+  
   if(i == 1) {
     # init df
-    df <- read_csv(paste0('data/simulation/expansion_chunks/', df_file_names[i]))
+    df <- read_csv(
+      paste0('data/simulation/expansion_chunks/', df_file_names[i]), 
+      show_col_types = F
+    )
   }
   else {
     # add to df
-    df_to_add <- read_csv(paste0('data/simulation/expansion_chunks/', df_file_names[i]))
+    df_to_add <- read_csv(
+      paste0('data/simulation/expansion_chunks/', df_file_names[i]), 
+      show_col_types = F
+    )
     
     df <- rbind(df, df_to_add)
   }
@@ -69,7 +96,7 @@ expanded_df <- df
 rm(df)
 
 # or read in a single file
-expanded_df <- read_csv('data/simulation/expansion_chunks/exp_for11_lvl_1.csv')
+expanded_df <- read_csv(paste0('data/simulation/expansion_chunks/', nn_names[2]))
 
 names(expanded_df)
 
@@ -82,6 +109,7 @@ expanded_df$used[which(is.na(expanded_df$turning_angle))] = NA
 expanded_df$neighbor_value[which(is.na(expanded_df$turning_angle))] = NA
 expanded_df$distance[which(is.na(expanded_df$turning_angle))] = NA
 
+#
 
 # source functions --------------------------------------------------------
 
@@ -163,23 +191,11 @@ write_csv(simul_performance_and_rmi, 'data/simulation/performance/perf_and_rmi_s
 
 # covariate visualization -------------------------------------------------
 
-unique(expanded_df$forager)
-
-# nn: 10, 15, 43, ta: 13, 63, 80, clst: 27, 90, 98
-
 plot_cov_and_path <- function(
     for_num, lvl, col_num, cov = 'dist', path=simul_results, exp_df=expanded_df, 
-    arr=arrangements
+    arr=arrangements, opt='orig_choice'
   ) {
-  if(for_num %in% c(10, 11, 15, 43)) {
-    strat = 'nn'
-  }
-  else if(for_num %in% c(13, 63, 80)) {
-    strat = 'ta'
-  }
-  else {
-    strat = 'clst'
-  }
+  strat <- unique(exp_df$strategy)
   
   # filter for path
   path_df <- path |> 
@@ -211,19 +227,48 @@ plot_cov_and_path <- function(
         )
       ) +
       scale_shape_manual(
-        '', labels = c('Unused', 'Used'), values = c(16, 17), na.value = 13
+        'Chosen?', labels = c('No', 'Yes', 'Current\nposition'), 
+        values = c(16, 17), na.value = 13
       ) +
       scale_size_discrete(guide = 'none', range = c(3,5)) +
-      scale_color_viridis_c(
-        'Distance value', option = 'magma', end = .9, na.value = 'black', 
-        n.breaks = 5
+      scale_color_gradient(
+        'Distance value', low = clrs[6], high = '#E7D22E', na.value = 'black'
       ) +
-      theme_void()
+      guides(
+        color = guide_colorbar(
+          order = 1, direction = 'horizontal', position = 'top'
+        ),
+        shape = guide_legend(
+          override.aes = list(size = 3), order = 2, position = 'top'
+        )
+      ) +
+      theme_void() +
+      theme(
+        text = element_text(family = 'Aptos'),
+        legend.text = element_text(size = 10), 
+        legend.title = element_text(size = 14, face = 'bold'), 
+        legend.title.position = 'top', 
+        legend.text.position = 'bottom', 
+        legend.margin = margin(t = 0, b = 0, r = 10, l = 10)
+      )
   } else if(cov == 'ta') {
-    # look at nn
-    p <- exp_df |> 
+    # look at ta
+    
+    df <- exp_df |> 
       filter(forager == for_num & level == lvl & collection_num == col_num) |> 
-      left_join(arr, by = join_by(level, obj_ID, point_value)) |> 
+      left_join(arr, by = join_by(level, obj_ID, point_value))
+    
+    # determine which would be used
+    if(opt != 'orig_choice') {
+      # find which coconut would be chosen
+      df$used <- vector('numeric', length = length(df$turning_angle))
+      
+      df$used[which.max(cos(df$turning_angle))] <- 1
+      
+      df$used[is.na(df$turning_angle)] <- NA
+    }
+    
+    p <- df |>  
       ggplot() +
       geom_path(
         data = path_df, aes(x = x, y = y), linewidth = .2, 
@@ -236,19 +281,46 @@ plot_cov_and_path <- function(
         )
       ) +
       scale_shape_manual(
-        '', labels = c('Unused', 'Used'), values = c(16, 17), na.value = 13
+        'Chosen?', labels = c('No', 'Yes', 'Current\nposition'), 
+        values = c(16, 17), na.value = 13
       ) +
       scale_size_discrete(guide = 'none', range = c(3,5)) +
-      scale_color_viridis_c(
-        'Turning angle value', option = 'magma', end = .9, na.value = 'black',
-        n.breaks = 5
+      scale_color_gradient(
+        'Turning angle value', low = clrs[4], high = '#C4DEF1', na.value = 'black'
       ) +
-      theme_void()
+      guides(
+        color = guide_colorbar(
+          order = 1, direction = 'horizontal', position = 'top'
+        ),
+        shape = guide_legend(
+          override.aes = list(size = 3), order = 2, position = 'top'
+        )
+      ) +
+      theme_void() +
+      theme(
+        text = element_text(family = 'Aptos'),
+        legend.text = element_text(size = 10), 
+        legend.title = element_text(size = 14, face = 'bold'), 
+        legend.title.position = 'top', 
+        legend.text.position = 'bottom', 
+        legend.margin = margin(t = 0, b = 0, r = 10, l = 10)
+      )
   } else if(cov == 'clst') {
-    # look at nn
-    p <- exp_df |> 
+    # look at clst
+    df <- exp_df |> 
       filter(forager == for_num & level == lvl & collection_num == col_num) |> 
-      left_join(arr, by = join_by(level, obj_ID, point_value)) |> 
+      left_join(arr, by = join_by(level, obj_ID, point_value))
+    
+    if(opt != 'orig_choice') {
+      # find which coconut would be chosen
+      df$used <- vector('numeric', length = length(df$turning_angle))
+      
+      df$used[which.max(df$neighbor_value)] <- 1
+      
+      df$used[is.na(df$turning_angle)] <- NA
+    }
+    
+    p <- df |> 
       ggplot() +
       geom_path(
         data = path_df, aes(x = x, y = y), linewidth = .2, 
@@ -261,20 +333,42 @@ plot_cov_and_path <- function(
         )
       ) +
       scale_shape_manual(
-        '', labels = c('Unused', 'Used'), values = c(16, 17), na.value = 13
+        'Chosen?', labels = c('No', 'Yes', 'Current\nposition'), 
+        values = c(16, 17), na.value = 13
       ) +
       scale_size_discrete(guide = 'none', range = c(3,5)) +
-      scale_color_viridis_c(
-        'Cluster value', option = 'magma', end = .9, na.value = 'black', 
-        n.breaks = 5
+      scale_color_gradient(
+        'Cluster value', low = clrs[1], high = '#C4ECAB', na.value = 'black'
       ) +
-      theme_void()
+      guides(
+        color = guide_colorbar(
+          order = 1, direction = 'horizontal', position = 'top'
+        ),
+        shape = guide_legend(
+          override.aes = list(size = 3), order = 2, position = 'top'
+        )
+      ) +
+      theme_void() +
+      theme(
+        text = element_text(family = 'Aptos'),
+        legend.text = element_text(size = 10), 
+        legend.title = element_text(size = 14, face = 'bold'), 
+        legend.title.position = 'top', 
+        legend.text.position = 'bottom', 
+        legend.margin = margin(t = 0, b = 0, r = 10, l = 10)
+      )
   }
   
   return(p)
 }
 
-plot_cov_and_path(11, 1, 0, cov = 'ta')
+
+plot_cov_and_path(0, 10, 2, cov = 'clst', opt = 'cov_choice')
+
+ggsave(
+  'fig_output/simulation/nn_strat_clst_valuation.pdf', device = 'pdf', 
+  width = 6, height = 6.6, units = 'in'
+)
 
 # view first 10 steps
 for(i in 0:9) {
