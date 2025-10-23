@@ -15,10 +15,11 @@ library(showtext)
 # load data ---------------------------------------------------------------
 
 # simulation results
-simul_results <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_20_25.csv')
+simul_results_20 <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_20_25.csv')
+simul_results_23 <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_23_25.csv')
 
 # first col is the pd index, then reorder to place level and forager first
-simul_results <- simul_results |> 
+simul_results_23 <- simul_results_23 |> 
   relocate(strategy, forager, level)
 
 # cols as follows:
@@ -33,14 +34,25 @@ simul_results <- simul_results |>
 # time = time collected
 # dist = euclid dist from last position
 
-simul_results |> 
-  group_by(strategy) |> 
+clst_3_results <- simul_results_23 |> 
+  filter(strategy == 'clst') |> 
+  add_column(clst_number = 3)
+
+clst_results_comp <- rbind(clst_2_results, clst_3_results)
+
+clst_results_comp |> 
+  group_by(clst_number, forager, level) |> 
   summarize(
-    n = n(), 
-    nn_wt = mean(nn_weight), 
-    ta_wt = mean(ta_weight), 
-    clst_wt = mean(clst_weight)
-  )
+    total_time = max(time), 
+    total_dist = sum(dist), 
+    clst_weight = unique(clst_weight)
+  ) |> 
+  ggplot() +
+  geom_density(aes(x = total_time, color = as.factor(clst_number), fill = as.factor(clst_number))) +
+  theme_bw() +
+  facet_wrap(~level)
+
+# cluster with 3 doesn't appear to perform any better than 2, may actually be worse
 
 # level arrangements
 arrangements <- read_csv('data/level_arrangements/all_levels_arrangements.csv')

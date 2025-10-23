@@ -345,12 +345,8 @@ def run_foraging_agent(
 
 # simulating forages by agents valuing heuristics differently
 def simulate_forages(
-    n_agents=100, lvl_obj_locs=pd.DataFrame, lvl_dist_ms=list,
-    wt_dist_par=[0, 1], file_string=str
+    n_agents=100, strat_list=['nn', 'ta', 'clst'], lvl_obj_locs=pd.DataFrame, lvl_dist_ms=list, wt_dist_par=[0, 1], file_string=str
 ):
-
-    # strats
-    strat_list = ['nn', 'ta', 'clst']
 
     # run through each foraging strategy
     for strat_i in range(0, len(strat_list)):
@@ -380,7 +376,7 @@ def simulate_forages(
                 # let agent play the level and record results
                 forage_results = run_foraging_agent(
                     lvl_coco_locs=lvl, lvl_dist_m=lvl_m, weights=weights,
-                    rps=[0, .05], clust_neighbors=2
+                    rps=[0, .05], clust_neighbors=3
                 )
 
                 # add level and agent identifiers
@@ -425,6 +421,5 @@ d = create_distance_matrices(all_coco_location_data)
 
 
 simulate_forages(
-    n_agents=100, lvl_obj_locs=all_coco_location_data, lvl_dist_ms=d,
-    wt_dist_par=[1, .3], file_string='simul_weighted_forages_10_20_25.csv'
+    n_agents=100, strat_list=['clst'], lvl_obj_locs=all_coco_location_data, lvl_dist_ms=d, wt_dist_par=[1, .3], file_string='simul_weighted_forages_10_23_25.csv'
 )
