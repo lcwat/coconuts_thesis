@@ -9,17 +9,18 @@ library(tidyverse)
 library(ggridges)
 library(showtext)
 # library(plotly)
-# library(lme4)
-# library(performance)
+library(lme4)
+library(performance)
+library(emmeans)
 
 # load data ---------------------------------------------------------------
 
 # simulation results
-simul_results_20 <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_20_25.csv')
-simul_results_23 <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_23_25.csv')
+simul_results <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_20_25.csv')
+# simul_results_23 <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_23_25.csv')
 
 # first col is the pd index, then reorder to place level and forager first
-simul_results_23 <- simul_results_23 |> 
+simul_results <- simul_results |> 
   relocate(strategy, forager, level)
 
 # cols as follows:
@@ -34,23 +35,6 @@ simul_results_23 <- simul_results_23 |>
 # time = time collected
 # dist = euclid dist from last position
 
-clst_3_results <- simul_results_23 |> 
-  filter(strategy == 'clst') |> 
-  add_column(clst_number = 3)
-
-clst_results_comp <- rbind(clst_2_results, clst_3_results)
-
-clst_results_comp |> 
-  group_by(clst_number, forager, level) |> 
-  summarize(
-    total_time = max(time), 
-    total_dist = sum(dist), 
-    clst_weight = unique(clst_weight)
-  ) |> 
-  ggplot() +
-  geom_density(aes(x = total_time, color = as.factor(clst_number), fill = as.factor(clst_number))) +
-  theme_bw() +
-  facet_wrap(~level)
 
 # cluster with 3 doesn't appear to perform any better than 2, may actually be worse
 
@@ -490,11 +474,18 @@ plot_path <- function(strat, forager_id, level_id, data=simul_results, arr=arran
 # view the paths
 plot_path('nn', 42, 6)
 
+arr10 <- arrangements |> 
+  filter(level == 10)
+
 # view all agent paths on a level
 simul_results |>
-  filter(strategy == 'clst' & level == 3) |> 
-  ggplot(aes(x = x, y = y, color = as.factor(forager))) +
-  geom_path(linewidth = .2) +
+  filter(strategy == 'nn' & level == 9) |>
+  mutate(
+    forager = factor(forager, levels = unique(forager[order(nn_weight)]), ordered = T)
+  ) |> 
+  ggplot() +
+  geom_point(data = arr10, aes(x = x, y = y), size = .1, color = 'grey') +
+  geom_path(aes(x = x, y = y, color = forager), linewidth = .3) +
   scale_color_discrete(guide = 'none') +
   theme_void() +
   facet_wrap(~forager)
@@ -678,25 +669,56 @@ simul_performance |>
 
 # modelling ---------------------------------------------------------------
 
+# load in data 
+simul_performance_and_rmi <- read_csv('data/simulation/performance/perf_and_rmi_summary.csv')
+
+
 # center
-simul_performance <- simul_performance |> 
+simul_performance_and_rmi <- simul_performance_and_rmi |> 
   mutate(
     c_nn_wt = nn_wt - mean(nn_wt), 
     c_ta_wt = ta_wt - mean(ta_wt),
     c_clst_wt = clst_wt - mean(clst_wt),
-    c_pv_wt = pv_wt - mean(pv_wt), 
     forager = as.factor(forager), 
-    level = as.factor(level)
+    level = as.factor(level), 
+    strategy = as.factor(strategy)
   )
 
-# predict performance from wts
+# effect code strat and level
+contrasts(simul_performance_and_rmi$strategy) <- contr.sum(unique(simul_performance_and_rmi$strategy))
+contrasts(simul_performance_and_rmi$level) <- contr.sum(unique(simul_performance_and_rmi$level))
+
+
+# predict performance from strategy and level
 perf_model <- lmer(
-  total_time ~ c_nn_wt * c_ta_wt * c_clst_wt * c_pv_wt + (1 | forager), 
-  data = simul_performance
+  total_time ~ 1 + strategy * level + (strategy | strategy:forager), 
+  data = simul_performance_and_rmi
 )
 
 summary(perf_model)
 
-p <- check_model(perf_model, check='normality')
+check_model(perf_model)
 
-p
+to_plot <- perf_model |> 
+  emmeans(
+    specs = c('strategy', 'level')
+  ) |> 
+  as_tibble()
+
+clrs <- NatParksPalettes::natparks.pals('Everglades')
+
+to_plot |> 
+  ggplot(aes(x = strategy, y = emmean, fill = strategy)) +
+  geom_col(width = .5) +
+  geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL), width = .2) +
+  scale_y_continuous('Completion time (s)', limits = c(0, 1000), n.breaks = 5) +
+  scale_x_discrete('Strategy', labels = c('Cluster', 'Nearest-neighbor', 'Turning angle')) +
+  scale_fill_manual(guide = 'none', values = c(clrs[1], clrs[6], clrs[4])) +
+  theme_bw() +
+  facet_wrap(~level) +
+  theme(
+    axis.text.x = element_text(angle = -45, hjust = 0), 
+    panel.grid.major.x = element_blank()
+  )
+
+
