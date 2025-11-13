@@ -397,23 +397,40 @@ plot_path <- function(strat, forager_id, level_id, data=simul_results, arr=arran
 # view the paths
 plot_path('nn', 42, 6)
 
-# view all paths
-# create level df
-arr10 <- arrangements |> 
-  filter(level == 10)
 
-# plot
-simul_results |>
-  filter(strategy == 'nn' & level == 9) |> # edit forager/level here
-  mutate(
-    forager = factor(forager, levels = unique(forager[order(nn_weight)]), ordered = T)
-  ) |> 
-  ggplot() +
-  geom_point(data = arr10, aes(x = x, y = y), size = .1, color = 'grey') +
-  geom_path(aes(x = x, y = y, color = forager), linewidth = .3) +
-  scale_color_discrete(guide = 'none') +
-  theme_void() +
-  facet_wrap(~forager)
+for(i in 1:10) {
+  lvl = i
+  
+  # view all paths
+  # create level df
+  arr <- arrangements |> 
+    filter(level == lvl)
+  
+  # plot
+  simul_results |>
+    filter(level == lvl) |> # edit forager/level here
+    filter(forager %in% sample.int(100, size = 10)) |> # sample
+    mutate(
+      strategy = factor(strategy, labels = c('cluster', 'nearest\nneighbor', 'turning\nangle'))
+    ) |> 
+    ggplot() +
+    geom_point(
+      data = arr, 
+      aes(x = x, y = y, size = as.factor(point_value)), 
+      color = 'grey'
+    ) +
+    geom_path(aes(x = x, y = y, color = as.factor(strategy)), linewidth = .3) +
+    scale_size_discrete(guide = 'none', range = c(.1, .8)) +
+    scale_color_manual(guide = 'none', values = c(clrs[1], clrs[6], clrs[4])) +
+    theme_void() +
+    facet_grid(strategy~forager)
+  
+  # save
+  ggsave(
+    paste0('fig_output/simulation/lvl', lvl, '_paths_by_strat.pdf'), device = 'pdf', 
+    width = 10, height = 4, units = 'in'
+  )
+}
 
 # view all paths of individual agent across level 
 simul_results |>
