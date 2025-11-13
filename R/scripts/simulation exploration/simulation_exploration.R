@@ -432,6 +432,27 @@ for(i in 1:10) {
   )
 }
 
+# get performance and trapline measures for each
+(lvl10 <- simul_performance |> 
+  filter(forager %in% c(12, 17, 30, 58, 62, 69, 77, 80, 93, 98)) |> 
+  filter(level == 10) |> 
+  group_by(strategy) |> 
+  summarize(
+    m_time = mean(total_time), 
+    m_rmi = mean(rmi)
+  ))
+
+# combine
+lvl_fig_summary <- bind_rows(lvl1, lvl2, lvl3, lvl4, lvl5, lvl6, lvl7, lvl8, lvl9, lvl10, .id = 'level')
+
+lvl_fig_summary <- lvl_fig_summary |> 
+  mutate(
+    across(c(m_time, m_rmi), \(x) round(x, 2))
+  )
+
+# save
+write_csv(lvl_fig_summary, 'table_output/simulation/lvl_path_figure_numbers.csv')
+
 # view all paths of individual agent across level 
 simul_results |>
   filter(strategy == 'ta' & forager == 5) |> 
