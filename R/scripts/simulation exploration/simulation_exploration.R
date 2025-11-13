@@ -1,5 +1,7 @@
+# coconut thesis
+# Fall 2025
 # Luke Watson
-# 10/25
+
 
 # this script will explore the results of strategy simulation
 
@@ -8,7 +10,6 @@
 library(tidyverse)
 library(ggridges)
 library(showtext)
-# library(plotly)
 library(lme4)
 library(performance)
 library(emmeans)
@@ -22,6 +23,9 @@ simul_results <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forag
 # first col is the pd index, then reorder to place level and forager first
 simul_results <- simul_results |> 
   relocate(strategy, forager, level)
+
+# load in performance and rmi summaries
+simul_performance <- read_csv('data/simulation/performance/perf_and_rmi_summary.csv')
 
 # cols as follows:
 # forager = agent id
@@ -41,57 +45,7 @@ simul_results <- simul_results |>
 # level arrangements
 arrangements <- read_csv('data/level_arrangements/all_levels_arrangements.csv')
 
-
-# find file names
-df_file_names <- list.files('data/simulation/expansion_chunks')
-
-nn_names <- df_file_names[str_detect(df_file_names, '_nn_')]
-
-# load expanded dfs and concat into one dataset
-for(i in 1:length(df_file_names)) {
-  
-  if(str_detect(df_file_names[i], '_clst_')) {
-    clst_df <- read_csv(
-      paste0('data/simulation/expansion_chunks/', df_file_names[i]), 
-      show_col_types = F
-    )
-  }
-  else if(str_detect(df_file_names[i], '_nn_')) {
-    nn_df <- read_csv(
-      paste0('data/simulation/expansion_chunks/', df_file_names[i]), 
-      show_col_types = F
-    )
-  }
-  else {
-    ta_df <- read_csv(
-      paste0('data/simulation/expansion_chunks/', df_file_names[i]), 
-      show_col_types = F
-    )
-  }
-  
-  if(i == 1) {
-    # init df
-    df <- read_csv(
-      paste0('data/simulation/expansion_chunks/', df_file_names[i]), 
-      show_col_types = F
-    )
-  }
-  else {
-    # add to df
-    df_to_add <- read_csv(
-      paste0('data/simulation/expansion_chunks/', df_file_names[i]), 
-      show_col_types = F
-    )
-    
-    df <- rbind(df, df_to_add)
-  }
-}
-
-# rename df
-expanded_df <- df
-rm(df)
-
-# or read in a single file
+# read in expanded df for figure creation
 expanded_df <- read_csv(paste0('data/simulation/expansion_chunks/', nn_names[2]))
 
 names(expanded_df)
@@ -112,7 +66,7 @@ expanded_df$distance[which(is.na(expanded_df$turning_angle))] = NA
 source('R/scripts/src/entropy.R') # rmi
 
 
-# statistics --------------------------------------------------------------
+# performance and rmi calc ---------------------------------------------------
 
 # find foragers performance
 simul_performance <- simul_results |>
@@ -127,12 +81,8 @@ simul_performance <- simul_results |>
   )
 strats = unique(simul_performance$strategy)
 
-simul_results |> 
-  filter(strategy == strats[1] & forager == 0 & level == 1) |> 
-  pull(obj_ID) |> 
-  entropy()
-
 # find entropy of each run
+# create vectors to stow data
 rmis <- vector('numeric')
 strats <- vector('character')
 foragers <- vector('numeric')
@@ -172,11 +122,6 @@ rmi_tibble <- tibble(
   strategy = strats, forager = foragers, level = levels, rmi = rmis
 )
 
-rmi_tibble |> 
-  ggplot(aes(x = rmi, fill = as.factor(strategy))) + 
-  geom_density(alpha = .3) +
-  theme_bw() +
-  facet_wrap(~level)
 
 # merge with performance data
 simul_performance_and_rmi <- left_join(simul_performance, rmi_tibble) 
@@ -187,6 +132,7 @@ write_csv(simul_performance_and_rmi, 'data/simulation/performance/perf_and_rmi_s
 
 # covariate visualization -------------------------------------------------
 
+# function to view covariate values visually on each step
 plot_cov_and_path <- function(
     for_num, lvl, col_num, cov = 'dist', path=simul_results, exp_df=expanded_df, 
     arr=arrangements, opt='orig_choice'
@@ -358,9 +304,10 @@ plot_cov_and_path <- function(
   return(p)
 }
 
-
+# plot
 plot_cov_and_path(0, 10, 2, cov = 'clst', opt = 'cov_choice')
 
+# save
 ggsave(
   'fig_output/simulation/nn_strat_clst_valuation.pdf', device = 'pdf', 
   width = 6, height = 6.6, units = 'in'
@@ -370,13 +317,14 @@ ggsave(
 for(i in 0:9) {
   if(i == 0) {
     plots <- list()
-    plots[[i+1]] <- plot_cov_and_path(11, 1, i, cov = 'clst')
+    plots[[i+1]] <- plot_cov_and_path(11, 1, i, cov = 'clst') # edit run/step here
   }
   else {
-    plots[[i+1]] <- plot_cov_and_path(11, 1, i, cov = 'clst')
+    plots[[i+1]] <- plot_cov_and_path(11, 1, i, cov = 'clst') # edit run/step here
   }
 }
 
+# routine to view
 for(i in 1:length(plots)) {
   print(plots[[i]])
   
@@ -390,35 +338,10 @@ for(i in 1:length(plots)) {
   }
 }
 
-expanded_df |> 
-  group_by(forager) |> 
-  summarize(
-    strat = unique(strategy)
-  )
-
-simul_results |> 
-  filter(strategy == 'clst' & forager == 27 & level == 1) |> 
-  add_row(x = 0, y = 0, time = 0, .before = 1) |> 
-  slice_head(n = 5) |> 
-  ggplot() +
-  geom_path(aes(x = x, y = y, color = time)) +
-  geom_point(data = arrangements[arrangements$level == 1,], aes(x = x, y = y)) +
-  theme_void()
-
-# check ta code for the expansion, appears to not be using the correct heading angle
-# on every other collection for some reason. could be due to the wrong obj being
-# used. ta appears to be working in the simulation though 
-
-# could also be an issue with the heading starting from the first obs, carrying over through
-# to every other subsequent collection. i think the issue could be coming from 
-# defining the heading from the previous two objects, with the first obs the 
-# heading should be defined by the angle between 0 and the first obs
 
 # path visualization ------------------------------------------------------
 
-
 # view the path ran by a particular forager on a particular level
-
 plot_path <- function(strat, forager_id, level_id, data=simul_results, arr=arrangements) {
   
   # filter arrangements for level
@@ -474,12 +397,14 @@ plot_path <- function(strat, forager_id, level_id, data=simul_results, arr=arran
 # view the paths
 plot_path('nn', 42, 6)
 
+# view all paths
+# create level df
 arr10 <- arrangements |> 
   filter(level == 10)
 
-# view all agent paths on a level
+# plot
 simul_results |>
-  filter(strategy == 'nn' & level == 9) |>
+  filter(strategy == 'nn' & level == 9) |> # edit forager/level here
   mutate(
     forager = factor(forager, levels = unique(forager[order(nn_weight)]), ordered = T)
   ) |> 
@@ -490,7 +415,7 @@ simul_results |>
   theme_void() +
   facet_wrap(~forager)
 
-# view all paths of agent by level
+# view all paths of individual agent across level 
 simul_results |>
   filter(strategy == 'ta' & forager == 5) |> 
   ggplot(aes(x = x, y = y)) +
@@ -503,32 +428,20 @@ simul_results |>
   theme_void() +
   facet_wrap(~level)
 
-# could use lpa, lda, or cluster analysis to define similarities in agents and 
-# connect to performance
 
 # performance -------------------------------------------------------------
 
-# ta weirdly reports no traplining while the plots indicate what looks like 
-# perfect traplining, perhaps there was some sort of issue in rmi calc
 
+# distribution ridge figures
 
-# distributions
-simul_performance <- simul_results |>
-  group_by(strategy, forager, level) |> 
-  summarize(
-    total_time = max(time), 
-    total_dist = sum(dist), 
-    ta_wt = unique(ta_weight), 
-    nn_wt = unique(nn_weight), 
-    clst_wt = unique(clst_weight)
-  )
-
+# set colors and font
 clrs <- NatParksPalettes::natparks.pals('Everglades')
 showtext_opts(dpi = 300)
 showtext_auto()
 font_paths('C:\\Users\\lcwat\\AppData\\Local\\Microsoft\\Windows\\Fonts')
 font_add('Aptos', regular = 'Aptos.ttf')
 
+# plot 
 simul_performance |> 
   ggplot(
     aes(
@@ -571,50 +484,28 @@ ggsave(
   height = 10, width = 8, units = 'in', dpi = 300
 )
 
-# see how performance varied across levels and one weight at a time
-ggplot() +
-  geom_vline(aes(xintercept = 0), linetype = 'dashed', linewidth = .25, color = 'black') +
-  geom_point(aes(x = nn_wt, y = total_time, color = as.factor(strategy))) +
-  scale_color_viridis_d(option = 'rocket', begin = .3, end = .9) +
+# see how performance varied across levels and weights for each strategy
+simul_performance |> 
+  pivot_longer(
+    ta_wt:clst_wt, values_to = 'weights', names_to = 'strat_wt'
+  ) |> 
+  filter(strategy == 'ta' & weights != 0) |> 
+  ggplot(aes(x = weights, y = total_time)) +
+  geom_point(color = clrs[6], alpha = .3) +
+  geom_smooth(color = clrs[6], se = F) +
+  scale_y_continuous('Completion time (s)', limits = c(100, 550)) +
+  scale_x_continuous('ta weight', limits = c(.2, 2), breaks = seq(.2, 2, .4)) +
   theme_bw() +
-  facet_wrap(~level)
-
-rmi_tibble |> 
-  ggplot(
-    aes(
-      x = rmi, y = as.factor(level), fill = as.factor(strategy), 
-      color = as.factor(strategy)
-    )
-  ) +
-  geom_density_ridges(alpha = .3) +
-  # geom_point(position = position_jitterdodge(jitter.height = .15, dodge.width = -.3)) +
-  scale_x_continuous(n.breaks = 10) +
-  scale_color_manual(
-    'Strategy', values = c(clrs[1], clrs[6], clrs[4]), 
-    labels = c('Cluster', 'Nearest neighbor', 'Turning angle')
-  ) +
-  scale_fill_manual(
-    'Strategy', values = c(clrs[1], clrs[6], clrs[4]), 
-    labels = c('Cluster', 'Nearest neighbor', 'Turning angle')
-  ) +
-  labs(x = 'RMI', y = 'Game level') +
-  theme_bw() +
+  facet_wrap(~level) + 
   theme(
-    panel.border = element_blank(), 
-    panel.grid.major.y = element_blank(), 
-    axis.line.x = element_line(color = 'grey20', linewidth = .75),
-    axis.line.y = element_blank(),
-    axis.ticks.x = element_line(color = 'grey20', linewidth = .5), 
-    axis.ticks.y = element_blank(),
-    text = element_text(family = 'Aptos'),
-    axis.text = element_text(size = 10), 
-    axis.title = element_text(size = 14, face = 'bold'), 
-    legend.text = element_text(size = 10), 
-    legend.title = element_text(size = 14, face = 'bold'),
-    legend.position = 'top', 
-    legend.justification = 'left', 
-    legend.direction = 'horizontal'
+    panel.grid = element_blank()
   )
+
+ggsave(
+  'fig_output/simulation/ta_weight_slopes_level.pdf', device = 'pdf', height = 6, width = 8,
+  units = 'in'
+)
+
 
 # for the pure strategies, it is apparent that nn performs the best with regards 
 # to time and distance. 
@@ -629,52 +520,12 @@ rmi_tibble |>
 # no apparent affect on performance by rmi, ta or clst wts, but a clear effect of
 # nn wt decreasing time/distance or improving performance
 
-# see if weights perform similarly across levels for a forager
-simul_performance |> 
-  filter(forager %in% sample(simul_performance$forager, 5)) |> 
-  ggplot(aes(x = level, y = rmi, color = as.factor(forager))) +
-  geom_point() +
-  geom_line() +
-  scale_color_discrete(guide = 'none') +
-  theme_bw()
-
-# performance seems to vary for individuals in predictable ways but nothing 
-# systematic to particular weights that I can notice. may have to use a model
-# to see if these differences work
-
-# rmi seems to be more consistent than performance across levels, but for some
-# foragers (further from ceiling) it seems to bounce back and forth across level
-
-# level shouldn't be a fixed effect since my hypotheses don't really involve the 
-# arrangements. they were designed to provide variation and ensure that estimated 
-# weights are robust to various environmental organizations 
-
-# see how they interact to affect performance
-# interactive plotly render
-simul_performance |>
-  filter(level == 3) |>  
-  plot_ly(x = ~nn_wt, y = ~clst_wt, z = ~rmi, type="scatter3d", mode="markers")
-
-# plot with color
-simul_performance |> 
-  ggplot() +
-  geom_point(aes(x = ta_wt, y = clst_wt, color = rmi), size = 3) +
-  scale_color_viridis_c(direction = 1) +
-  theme_bw() + 
-  facet_wrap(~level)
-
-# harder to see interactive effects on performance and rmi by different weight 
-# combinations, but seems to follow findings from individual fixed effect plots
-# which makes sense perhaps since the simulations did not 
 
 # modelling ---------------------------------------------------------------
 
-# load in data 
-simul_performance_and_rmi <- read_csv('data/simulation/performance/perf_and_rmi_summary.csv')
-
 
 # center
-simul_performance_and_rmi <- simul_performance_and_rmi |> 
+simul_performance <- simul_performance |> 
   mutate(
     c_nn_wt = nn_wt - mean(nn_wt), 
     c_ta_wt = ta_wt - mean(ta_wt),
@@ -685,40 +536,58 @@ simul_performance_and_rmi <- simul_performance_and_rmi |>
   )
 
 # effect code strat and level
-contrasts(simul_performance_and_rmi$strategy) <- contr.sum(unique(simul_performance_and_rmi$strategy))
-contrasts(simul_performance_and_rmi$level) <- contr.sum(unique(simul_performance_and_rmi$level))
+contrasts(simul_performance$strategy) <- contr.sum(unique(simul_performance$strategy))
+contrasts(simul_performance$level) <- contr.sum(unique(simul_performance$level))
 
 
 # predict performance from strategy and level
-perf_model <- lmer(
-  total_time ~ 1 + strategy * level + (strategy | strategy:forager), 
-  data = simul_performance_and_rmi
+perf_model <- glmer(
+  total_time ~ 1 + nn_wt + ta_wt + clst_wt + (1 | strategy:forager) + (1 | level),
+  family = Gamma(link = 'log'),
+  data = simul_performance
 )
 
 summary(perf_model)
 
-check_model(perf_model)
+performance::check_model(perf_model)
+
+wts <- simul_performance |> 
+  filter(strategy == 'nn') |> 
+  reframe(
+    wts = seq(min(nn_wt), max(nn_wt), length.out = 30)
+  ) |> 
+  pull(wts)
+  
 
 to_plot <- perf_model |> 
   emmeans(
-    specs = c('strategy', 'level')
+    ~nn_wt, at = list(nn_wt = wts)
   ) |> 
-  as_tibble()
+  as_tibble() |> 
+  mutate(
+    emmean = exp(emmean)
+  )
 
 clrs <- NatParksPalettes::natparks.pals('Everglades')
 
 to_plot |> 
-  ggplot(aes(x = strategy, y = emmean, fill = strategy)) +
-  geom_col(width = .5) +
-  geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL), width = .2) +
-  scale_y_continuous('Completion time (s)', limits = c(0, 1000), n.breaks = 5) +
-  scale_x_discrete('Strategy', labels = c('Cluster', 'Nearest-neighbor', 'Turning angle')) +
-  scale_fill_manual(guide = 'none', values = c(clrs[1], clrs[6], clrs[4])) +
+  ggplot(aes(x = nn_wt)) +
+  
+  # fitted line
+  geom_line(aes(y = emmean)) +
+  
+  # raw data
+  geom_point(
+    data = simul_performance |> filter(nn_wt != 0), 
+    aes(y = total_time), alpha = .3
+  ) +
+  
+  scale_y_continuous('Completion time (s)', limits = c(0, 300), n.breaks = 5) +
+  scale_x_continuous('NN weight', n.breaks = 10) +
   theme_bw() +
   facet_wrap(~level) +
   theme(
-    axis.text.x = element_text(angle = -45, hjust = 0), 
-    panel.grid.major.x = element_blank()
+    panel.grid = element_blank()
   )
 
 
