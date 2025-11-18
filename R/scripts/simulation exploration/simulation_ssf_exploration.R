@@ -33,6 +33,24 @@ glimpse(nn_runs_expanded)
 # vonmises circular distribution
 # cluster/neighbor values also appear strange 
 
+# create new step id variable for strata
+steps <- nn_runs_expanded |> 
+  group_by(forager, collection_num) |> 
+  count()
+  
+steps <- steps |> 
+  add_column(
+    step_id = seq(1, nrow(steps), 1)
+  ) |> 
+  select(-n)
+
+nn_runs_expanded <- nn_runs_expanded |> 
+  left_join(steps)
+
+# order by step id
+nn_runs_expanded <- nn_runs_expanded |> 
+  arrange(step_id)
+
 #
 
 # model -------------------------------------------------------------------
@@ -44,14 +62,18 @@ nn_runs_expanded <- nn_runs_expanded |>
 # turn into factors
 nn_runs_expanded$forager <- as.numeric(as.factor(nn_runs_expanded$forager))
 
+# variable names
+names(nn_runs_expanded)
+
 # glmmTMB fitting procedure
 # specify model with large fixed value for random effect variance (theta) of 
 # collection number (step)
 ssf_fit <- glmmTMB(
-  used ~ -1 + inv_dist + cos_ta + (1 | collection_num) + (0 + inv_dist + cos_ta | forager), 
+  used ~ -1 + c_inv_dist * c_point_val + (1 | collection_num) + 
+    (0 + c_inv_dist * c_point_val | forager), 
   family = poisson, data = nn_runs_expanded, 
-  map = list(theta = factor(c(NA, 1:3))), # specify fixed re variance for col num
-  start = list(theta = c(log(1e3), 0, 0, 0))
+  map = list(theta = factor(c(NA, 1:6))), # specify fixed re variance for col num
+  start = list(theta = c(log(1e3), 0, 0, 0, 0, 0, 0))
 )
 
 # singular fit
