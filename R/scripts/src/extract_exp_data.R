@@ -6,7 +6,9 @@
 dfs_file_list <- list.files('data/simulation/expansion_chunks')
 
 # choose random files to start with for just one level
-sub_dfs_list <- sample(dfs_file_list[str_detect(dfs_file_list, '_lvl_10')], 10)
+nn_dfs_list <- dfs_file_list[str_detect(dfs_file_list, '_nn_')]
+
+sub_dfs_list <- sample(nn_dfs_list[str_detect(nn_dfs_list, '_lvl_8')], 10)
 
 for(i in 1:length(sub_dfs_list)) {
   string <- paste0('data/simulation/expansion_chunks/', sub_dfs_list[i])
@@ -28,6 +30,26 @@ expanded_df <- expanded_df |>
     id = paste0(strategy, forager)
   )
 
+# point value is not correct
+
+# load correct values
+arrangements <- read_csv('data/level_arrangements/all_levels_arrangements.csv')
+
+# merge for level
+expanded_df <- expanded_df |> 
+  left_join(arrangements, join_by(obj_ID, level), relationship = 'many-to-many') |> 
+  rename(
+    point_value = point_value.y
+  ) |> 
+  select(-point_value.x)
+
+# view
+expanded_df |> 
+  head(n = 68) |> 
+  ggplot(aes(x = x, y = y, size = as.factor(point_value))) +
+  geom_point() +
+  theme_void()
+
 # match NAs for current step obj id
 expanded_df$used[which(is.na(expanded_df$turning_angle))] = NA
 expanded_df$neighbor_value[which(is.na(expanded_df$turning_angle))] = NA
@@ -45,4 +67,7 @@ expanded_df <- expanded_df |>
     c_point_val = point_value - mean(point_value, na.rm = T)
   )
 
-summary(expanded_df)
+glimpse(expanded_df)
+
+# write to file
+write_csv(expanded_df, 'data/simulation/expansion_cleaned/cleaned_10_nn_expanded_lvl_8.csv')

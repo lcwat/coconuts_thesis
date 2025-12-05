@@ -8,6 +8,7 @@
 # load libraries ----------------------------------------------------------
 
 library(tidyverse)
+library(patchwork)
 library(ggridges)
 library(showtext)
 library(lme4)
@@ -18,9 +19,8 @@ library(emmeans)
 
 # simulation results
 simul_results <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_20_25.csv')
-# simul_results_23 <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_23_25.csv')
 
-# first col is the pd index, then reorder to place level and forager first
+# reorder cols for easy reading
 simul_results <- simul_results |> 
   relocate(strategy, forager, level)
 
@@ -39,25 +39,8 @@ simul_performance <- read_csv('data/simulation/performance/perf_and_rmi_summary.
 # time = time collected
 # dist = euclid dist from last position
 
-
-# cluster with 3 doesn't appear to perform any better than 2, may actually be worse
-
 # level arrangements
 arrangements <- read_csv('data/level_arrangements/all_levels_arrangements.csv')
-
-# read in expanded df for figure creation
-expanded_df <- read_csv(paste0('data/simulation/expansion_chunks/', nn_names[2]))
-
-names(expanded_df)
-
-str(expanded_df)
-
-# clean
-
-# make used val for current collected coconut na
-expanded_df$used[which(is.na(expanded_df$turning_angle))] = NA
-expanded_df$neighbor_value[which(is.na(expanded_df$turning_angle))] = NA
-expanded_df$distance[which(is.na(expanded_df$turning_angle))] = NA
 
 #
 
@@ -65,8 +48,10 @@ expanded_df$distance[which(is.na(expanded_df$turning_angle))] = NA
 
 source('R/scripts/src/entropy.R') # rmi
 
-
 # performance and rmi calc ---------------------------------------------------
+
+# already completed this, the results are stored in the simul_performance df
+# but can view process here
 
 # find foragers performance
 simul_performance <- simul_results |>
@@ -130,219 +115,13 @@ simul_performance_and_rmi <- left_join(simul_performance, rmi_tibble)
 write_csv(simul_performance_and_rmi, 'data/simulation/performance/perf_and_rmi_summary.csv')
 
 
-# covariate visualization -------------------------------------------------
-
-# function to view covariate values visually on each step
-plot_cov_and_path <- function(
-    for_num, lvl, col_num, cov = 'dist', path=simul_results, exp_df=expanded_df, 
-    arr=arrangements, opt='orig_choice'
-  ) {
-  strat <- unique(exp_df$strategy)
-  
-  # filter for path
-  path_df <- path |> 
-    filter(strategy == strat & forager == for_num & level == lvl) |> 
-    add_row(
-      strategy = simul_results$strategy[1], forager = for_num, level = lvl, 
-      nn_weight = simul_results$nn_weight[1], 
-      ta_weight = simul_results$ta_weight[1], clst_weight = simul_results$clst_weight[1],
-      pv_weight = simul_results$pv_weight[1], obj_ID = 0, x = 0, y = 0, time = 0, dist = 0,
-      point_value = 0, points = 0,
-      .before = 1
-    ) |> 
-    slice_head(n=col_num+2)
-  
-  if(cov == 'dist') {
-    # look at nn
-    p <- exp_df |> 
-      filter(forager == for_num & level == lvl & collection_num == col_num) |> 
-      left_join(arr, by = join_by(level, obj_ID, point_value)) |> 
-      ggplot() +
-      geom_path(
-        data = path_df, aes(x = x, y = y), linewidth = .2, 
-        arrow = arrow(type = 'closed')
-      ) +
-      geom_point(
-        aes(
-          x = x, y = y, size = as.factor(point_value), color = (1/distance), 
-          shape = as.factor(used)
-        )
-      ) +
-      scale_shape_manual(
-        'Chosen?', labels = c('No', 'Yes', 'Current\nposition'), 
-        values = c(16, 17), na.value = 13
-      ) +
-      scale_size_discrete(guide = 'none', range = c(3,5)) +
-      scale_color_gradient(
-        'Distance value', low = clrs[6], high = '#E7D22E', na.value = 'black'
-      ) +
-      guides(
-        color = guide_colorbar(
-          order = 1, direction = 'horizontal', position = 'top'
-        ),
-        shape = guide_legend(
-          override.aes = list(size = 3), order = 2, position = 'top'
-        )
-      ) +
-      theme_void() +
-      theme(
-        text = element_text(family = 'Aptos'),
-        legend.text = element_text(size = 10), 
-        legend.title = element_text(size = 14, face = 'bold'), 
-        legend.title.position = 'top', 
-        legend.text.position = 'bottom', 
-        legend.margin = margin(t = 0, b = 0, r = 10, l = 10)
-      )
-  } else if(cov == 'ta') {
-    # look at ta
-    
-    df <- exp_df |> 
-      filter(forager == for_num & level == lvl & collection_num == col_num) |> 
-      left_join(arr, by = join_by(level, obj_ID, point_value))
-    
-    # determine which would be used
-    if(opt != 'orig_choice') {
-      # find which coconut would be chosen
-      df$used <- vector('numeric', length = length(df$turning_angle))
-      
-      df$used[which.max(cos(df$turning_angle))] <- 1
-      
-      df$used[is.na(df$turning_angle)] <- NA
-    }
-    
-    p <- df |>  
-      ggplot() +
-      geom_path(
-        data = path_df, aes(x = x, y = y), linewidth = .2, 
-        arrow = arrow(type = 'closed')
-      ) +
-      geom_point(
-        aes(
-          x = x, y = y, size = as.factor(point_value), color = cos(turning_angle), 
-          shape = as.factor(used)
-        )
-      ) +
-      scale_shape_manual(
-        'Chosen?', labels = c('No', 'Yes', 'Current\nposition'), 
-        values = c(16, 17), na.value = 13
-      ) +
-      scale_size_discrete(guide = 'none', range = c(3,5)) +
-      scale_color_gradient(
-        'Turning angle value', low = clrs[4], high = '#C4DEF1', na.value = 'black'
-      ) +
-      guides(
-        color = guide_colorbar(
-          order = 1, direction = 'horizontal', position = 'top'
-        ),
-        shape = guide_legend(
-          override.aes = list(size = 3), order = 2, position = 'top'
-        )
-      ) +
-      theme_void() +
-      theme(
-        text = element_text(family = 'Aptos'),
-        legend.text = element_text(size = 10), 
-        legend.title = element_text(size = 14, face = 'bold'), 
-        legend.title.position = 'top', 
-        legend.text.position = 'bottom', 
-        legend.margin = margin(t = 0, b = 0, r = 10, l = 10)
-      )
-  } else if(cov == 'clst') {
-    # look at clst
-    df <- exp_df |> 
-      filter(forager == for_num & level == lvl & collection_num == col_num) |> 
-      left_join(arr, by = join_by(level, obj_ID, point_value))
-    
-    if(opt != 'orig_choice') {
-      # find which coconut would be chosen
-      df$used <- vector('numeric', length = length(df$turning_angle))
-      
-      df$used[which.max(df$neighbor_value)] <- 1
-      
-      df$used[is.na(df$turning_angle)] <- NA
-    }
-    
-    p <- df |> 
-      ggplot() +
-      geom_path(
-        data = path_df, aes(x = x, y = y), linewidth = .2, 
-        arrow = arrow(type = 'closed')
-      ) +
-      geom_point(
-        aes(
-          x = x, y = y, size = as.factor(point_value), color = neighbor_value, 
-          shape = as.factor(used)
-        )
-      ) +
-      scale_shape_manual(
-        'Chosen?', labels = c('No', 'Yes', 'Current\nposition'), 
-        values = c(16, 17), na.value = 13
-      ) +
-      scale_size_discrete(guide = 'none', range = c(3,5)) +
-      scale_color_gradient(
-        'Cluster value', low = clrs[1], high = '#C4ECAB', na.value = 'black'
-      ) +
-      guides(
-        color = guide_colorbar(
-          order = 1, direction = 'horizontal', position = 'top'
-        ),
-        shape = guide_legend(
-          override.aes = list(size = 3), order = 2, position = 'top'
-        )
-      ) +
-      theme_void() +
-      theme(
-        text = element_text(family = 'Aptos'),
-        legend.text = element_text(size = 10), 
-        legend.title = element_text(size = 14, face = 'bold'), 
-        legend.title.position = 'top', 
-        legend.text.position = 'bottom', 
-        legend.margin = margin(t = 0, b = 0, r = 10, l = 10)
-      )
-  }
-  
-  return(p)
-}
-
-# plot
-plot_cov_and_path(0, 10, 2, cov = 'clst', opt = 'cov_choice')
-
-# save
-ggsave(
-  'fig_output/simulation/nn_strat_clst_valuation.pdf', device = 'pdf', 
-  width = 6, height = 6.6, units = 'in'
-)
-
-# view first 10 steps
-for(i in 0:9) {
-  if(i == 0) {
-    plots <- list()
-    plots[[i+1]] <- plot_cov_and_path(11, 1, i, cov = 'clst') # edit run/step here
-  }
-  else {
-    plots[[i+1]] <- plot_cov_and_path(11, 1, i, cov = 'clst') # edit run/step here
-  }
-}
-
-# routine to view
-for(i in 1:length(plots)) {
-  print(plots[[i]])
-  
-  ans <- readline('View next step? y/n')
-  
-  if(ans == 'y') {
-    # continue
-  }
-  else if(ans == 'n') {
-    break
-  }
-}
-
-
 # path visualization ------------------------------------------------------
 
 # view the path ran by a particular forager on a particular level
-plot_path <- function(strat, forager_id, level_id, data=simul_results, arr=arrangements) {
+plot_path <- function(
+    strat, forager_id, level_id, data=simul_results, arr=arrangements, 
+    perf_metrics = simul_performance
+  ) {
   
   # filter arrangements for level
   arr <- arr |> 
@@ -369,12 +148,17 @@ plot_path <- function(strat, forager_id, level_id, data=simul_results, arr=arran
     ggplot() +
     
     # add path
-    geom_path(aes(x = x, y = y, color = time), linewidth = .35, position = position_jitter()) +
+    geom_path(
+      aes(x = x, y = y, color = time), 
+      linewidth = .35, 
+      #position = position_jitter()
+    ) +
     
     # add arrangement
     geom_point(
       data = arr, aes(x = x, y = y, size = as.factor(point_value))
     ) +
+    
     #annotate(round(perf_metrics$time, 1), x = 0, y = 30) +
     
     scale_size_discrete('Point value', range = c(3, 5)) +
@@ -394,10 +178,25 @@ plot_path <- function(strat, forager_id, level_id, data=simul_results, arr=arran
   return(p)
 }
 
+# look at high performers/trapliners to view
+simul_performance |> 
+  filter(level == 3) |> 
+  arrange(rmi) |> 
+  head(5)
+
 # view the paths
-plot_path('nn', 42, 6)
+(p2 <- plot_path('clst', 54, 3) + guides(size = 'none', color = 'none') +
+  labs(title = '', subtitle = ''))
 
+# stack and save
+p / p2
 
+ggsave(
+  'fig_output/simulation/path_comparisons/rmi_path_comp.pdf', device = 'pdf', 
+  height = 10, width = 6, units = 'in'
+)
+
+# create several plots for sample of 10 foragers for each strat
 for(i in 1:10) {
   lvl = i
   
@@ -466,6 +265,10 @@ simul_results |>
   theme_void() +
   facet_wrap(~level)
 
+ggsave(
+  'fig_output/ta_agent_paths_by_level.pdf', device = 'pdf', width = 10, 
+  height = 6, units = 'in'
+)
 
 # performance -------------------------------------------------------------
 
@@ -479,17 +282,22 @@ showtext_auto()
 font_paths('C:\\Users\\lcwat\\AppData\\Local\\Microsoft\\Windows\\Fonts')
 font_add('Aptos', regular = 'Aptos.ttf')
 
+# presentation font
+font_add_google('Roboto')
+
 # plot 
 simul_performance |> 
+  # filter for half of levels
+  filter(level %in% seq(6, 10)) |> 
   ggplot(
     aes(
-      x = total_time, y = as.factor(level), fill = as.factor(strategy), 
+      x = rmi, y = as.factor(level), fill = as.factor(strategy), 
       color = as.factor(strategy)
     )
   ) +
   geom_density_ridges(alpha = .3) +
   # geom_point(position = position_jitterdodge(jitter.height = .15, dodge.width = -.3)) +
-  scale_x_continuous(n.breaks = 10) +
+  scale_x_continuous(n.breaks = 10, limits = c(0, 1)) +
   scale_color_manual(
     'Strategy', values = c(clrs[1], clrs[6], clrs[4]), 
     labels = c('Cluster', 'Nearest neighbor', 'Turning angle')
@@ -498,7 +306,7 @@ simul_performance |>
     'Strategy', values = c(clrs[1], clrs[6], clrs[4]), 
     labels = c('Cluster', 'Nearest neighbor', 'Turning angle')
   ) +
-  labs(x = 'Time (s)', y = 'Game level') +
+  labs(x = 'RMI', y = 'Game level') +
   theme_bw() +
   theme(
     panel.border = element_blank(), 
@@ -507,7 +315,7 @@ simul_performance |>
     axis.line.y = element_blank(),
     axis.ticks.x = element_line(color = 'grey20', linewidth = .5), 
     axis.ticks.y = element_blank(),
-    text = element_text(family = 'Aptos'),
+    text = element_text(family = 'Roboto'),
     axis.text = element_text(size = 10), 
     axis.title = element_text(size = 14, face = 'bold'), 
     legend.text = element_text(size = 10), 
@@ -518,8 +326,8 @@ simul_performance |>
   )
 
 ggsave(
-  'fig_output/simulation/pure_strat_rmi_comp_ridges.png', device = 'png', 
-  height = 10, width = 8, units = 'in', dpi = 300
+  'fig_output/simulation/performance_analysis/six_ten_pure_strat_rmi_comp_ridges.pdf', device = 'pdf', 
+  height = 6, width = 8, units = 'in'
 )
 
 # see how performance varied across levels and weights for each strategy
@@ -629,3 +437,52 @@ to_plot |>
   )
 
 
+
+
+# extras ------------------------------------------------------------------
+
+# distributions of weights
+simul_performance |> 
+  pivot_longer(ta_wt:clst_wt, values_to = 'weight', names_to = 'strat_wt') |> 
+  filter(weight > 0) |> 
+  ggplot(aes(x = weight, fill = as.factor(strategy))) +
+  
+  geom_density(color = NA) +
+  
+  geom_vline(aes(xintercept = 1), linetype = 3, linewidth = 1.2) +
+
+  scale_fill_manual(
+    'Strategy', values = c(clrs[1], clrs[6], clrs[4]), 
+    labels = c('Cluster', 'Nearest neighbor', 'Turning angle')
+  ) +
+  
+  scale_x_continuous(n.breaks = 6, limits = c(0, 2)) +
+  
+  facet_wrap(~strategy, ncol = 1) +
+  
+  theme_minimal() +
+  
+  theme(
+    strip.background = element_blank(), 
+    strip.text = element_blank(), 
+    panel.border = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(), 
+    axis.line.x = element_line(color = 'grey20', linewidth = .75),
+    axis.line.y = element_blank(),
+    axis.ticks.x = element_line(color = 'grey20', linewidth = .5), 
+    axis.ticks.y = element_blank(),
+    text = element_text(family = 'Roboto'),
+    axis.text = element_text(size = 10), 
+    axis.title = element_text(size = 14, face = 'bold'), 
+    legend.text = element_text(size = 10), 
+    legend.title = element_text(size = 14, face = 'bold'),
+    legend.position = 'top', 
+    legend.justification = 'left', 
+    legend.direction = 'horizontal'
+  )
+
+ggsave(
+  'fig_output/simulation/performance_analysis/weights_sampling.pdf', device = 'pdf', 
+  height = 6, width = 6, units = 'in'
+)
