@@ -274,7 +274,11 @@ plot_cov_and_path <- function(
 
 for(i in 0:15) {
   # plot
-  plot_cov_and_path(38, 8, i, cov = 'dist', opt = 'orig_choice')
+  plot_cov_and_path(38, 8, i, cov = 'dist', opt = 'orig_choice') +
+    theme(
+      plot.background = element_rect(fill = '#f1e1d2', color = NA), 
+      panel.background = element_rect(fill = '#f1e1d2', color = '#f1e1d2')
+    )
   
   # save
   ggsave(
