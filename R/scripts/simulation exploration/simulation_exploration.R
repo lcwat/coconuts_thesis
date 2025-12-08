@@ -305,7 +305,9 @@ plot_cov_and_path <- function(
 }
 
 # plot
-plot_cov_and_path(0, 10, 2, cov = 'clst', opt = 'cov_choice')
+plot_cov_and_path(
+  
+)
 
 # save
 ggsave(
