@@ -48,6 +48,41 @@ arrangements <- read_csv('data/level_arrangements/all_levels_arrangements.csv')
 
 source('R/scripts/src/entropy.R') # rmi
 
+# plot theme --------------------------------------------------------------
+
+# set colors and font
+clrs <- NatParksPalettes::natparks.pals('Everglades')
+showtext_opts(dpi = 300)
+showtext_auto()
+font_paths('C:\\Users\\lcwat\\AppData\\Local\\Microsoft\\Windows\\Fonts')
+font_add('Aptos', regular = 'Aptos.ttf')
+
+# presentation font
+font_add_google('Roboto')
+
+proposal_theme <- function() {
+  theme_bw() +
+    theme(
+      panel.border = element_blank(), 
+      panel.background = element_blank(), 
+      plot.background = element_blank(), 
+      legend.background = element_blank(),
+      panel.grid = element_blank(), 
+      axis.line = element_line(color = 'grey20', linewidth = .75),
+      axis.ticks = element_line(color = 'grey20', linewidth = .5),
+      text = element_text(family = 'Roboto'),
+      axis.text = element_text(size = 10), 
+      axis.title = element_text(size = 14, face = 'bold'), 
+      legend.text = element_text(size = 10), 
+      legend.title = element_text(size = 14, face = 'bold'),
+      legend.position = 'top', 
+      legend.justification = 'left', 
+      legend.direction = 'horizontal'
+    )
+}
+
+#
+
 # performance and rmi calc ---------------------------------------------------
 
 # already completed this, the results are stored in the simul_performance df
@@ -489,58 +524,50 @@ ggsave(
 
 # distribution ridge figures
 
-# set colors and font
-clrs <- NatParksPalettes::natparks.pals('Everglades')
-showtext_opts(dpi = 300)
-showtext_auto()
-font_paths('C:\\Users\\lcwat\\AppData\\Local\\Microsoft\\Windows\\Fonts')
-font_add('Aptos', regular = 'Aptos.ttf')
-
-# presentation font
-font_add_google('Roboto')
+# add fake participant data
+participant_performance <- tibble(
+  strategy = rep('players', 1000), 
+  forager = rep(seq.int(100), each = 10), 
+  level = rep(seq.int(10), 100), 
+  total_time = rnorm(n = 1000, 120, 15), 
+  total_distance = rnorm(n = 1000, 1500, 100), 
+  ta_wt = rep(NA, 1000), 
+  nn_wt = rep(NA, 1000), 
+  clst_wt = rep(NA, 1000), 
+  rmi = rbeta(n = 1000, 1, 1)
+)
 
 # plot 
 simul_performance |> 
+  bind_rows(participant_performance) |> 
   # filter for half of levels
-  filter(level %in% seq(6, 10)) |> 
+  filter(level %in% seq(1, 5)) |> 
   ggplot(
     aes(
-      x = rmi, y = as.factor(level), fill = as.factor(strategy), 
-      color = as.factor(strategy)
+      x = total_time, y = as.factor(level), fill = as.factor(strategy), 
+      color = as.factor(strategy), alpha = as.factor(strategy)
     )
   ) +
-  geom_density_ridges(alpha = .3) +
+  geom_density_ridges() +
   # geom_point(position = position_jitterdodge(jitter.height = .15, dodge.width = -.3)) +
-  scale_x_continuous(n.breaks = 10, limits = c(0, 1)) +
+  scale_x_continuous(n.breaks = 10) +
+  scale_alpha_manual(
+    'Strategy', values = c(.3, .3, .8, .3), 
+    labels = c('Cluster', 'Nearest neighbor', 'Players',  'Turning angle')
+  ) +
   scale_color_manual(
-    'Strategy', values = c(clrs[1], clrs[6], clrs[4]), 
-    labels = c('Cluster', 'Nearest neighbor', 'Turning angle')
+    'Strategy', values = c(clrs[1], clrs[6], clrs[2], clrs[4]), 
+    labels = c('Cluster', 'Nearest neighbor', 'Players',  'Turning angle')
   ) +
   scale_fill_manual(
-    'Strategy', values = c(clrs[1], clrs[6], clrs[4]), 
-    labels = c('Cluster', 'Nearest neighbor', 'Turning angle')
+    'Strategy', values = c(clrs[1], clrs[6], clrs[2], clrs[4]), 
+    labels = c('Cluster', 'Nearest neighbor', 'Players', 'Turning angle')
   ) +
-  labs(x = 'RMI', y = 'Game level') +
-  theme_bw() +
-  theme(
-    panel.border = element_blank(), 
-    panel.grid.major.y = element_blank(), 
-    axis.line.x = element_line(color = 'grey20', linewidth = .75),
-    axis.line.y = element_blank(),
-    axis.ticks.x = element_line(color = 'grey20', linewidth = .5), 
-    axis.ticks.y = element_blank(),
-    text = element_text(family = 'Roboto'),
-    axis.text = element_text(size = 10), 
-    axis.title = element_text(size = 14, face = 'bold'), 
-    legend.text = element_text(size = 10), 
-    legend.title = element_text(size = 14, face = 'bold'),
-    legend.position = 'top', 
-    legend.justification = 'left', 
-    legend.direction = 'horizontal'
-  )
+  labs(x = 'Completion Time (s)', y = 'Game level') +
+  proposal_theme()
 
 ggsave(
-  'fig_output/simulation/performance_analysis/six_ten_pure_strat_rmi_comp_ridges.pdf', device = 'pdf', 
+  'fig_output/simulation/performance_analysis/one_five_hypothetical_results_time_comp_ridges.pdf', device = 'pdf', 
   height = 6, width = 8, units = 'in'
 )
 
@@ -549,20 +576,18 @@ simul_performance |>
   pivot_longer(
     ta_wt:clst_wt, values_to = 'weights', names_to = 'strat_wt'
   ) |> 
-  filter(strategy == 'ta' & weights != 0) |> 
-  ggplot(aes(x = weights, y = total_time)) +
+  filter(strategy == 'nn' & weights != 0) |> 
+  ggplot(aes(x = weights, y = rmi)) +
   geom_point(color = clrs[6], alpha = .3) +
+  geom_vline(aes(xintercept = 1), linetype = 3, color = 'grey') +
   geom_smooth(color = clrs[6], se = F) +
-  scale_y_continuous('Completion time (s)', limits = c(100, 550)) +
-  scale_x_continuous('ta weight', limits = c(.2, 2), breaks = seq(.2, 2, .4)) +
-  theme_bw() +
+  scale_y_continuous('RMI', limits = c(0, 1)) +
+  scale_x_continuous('nn weight', limits = c(.2, 2), breaks = seq(.2, 2, .4)) +
   facet_wrap(~level) + 
-  theme(
-    panel.grid = element_blank()
-  )
+  proposal_theme()
 
 ggsave(
-  'fig_output/simulation/ta_weight_slopes_level.pdf', device = 'pdf', height = 6, width = 8,
+  'fig_output/simulation/nn_weight_slopes_rmi_level.pdf', device = 'pdf', height = 6, width = 8,
   units = 'in'
 )
 
