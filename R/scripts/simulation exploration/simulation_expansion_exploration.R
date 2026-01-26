@@ -7,6 +7,7 @@
 # load libraries ----------------------------------------------------------
 
 library(tidyverse)
+library(showtext)
 
 # load data ---------------------------------------------------------------
 
@@ -28,10 +29,18 @@ expanded_df$distance[which(is.na(expanded_df$turning_angle))] = NA
 # level arrangements
 arrangements <- read_csv('data/level_arrangements/all_levels_arrangements.csv')
 
+# path data
+simul_results <- read_csv('data/simulation/runs/pure_strats/simul_weighted_forages_10_20_25.csv')
 
 # pilot data
 pilot_forage_data <- read_csv('data/pilot/3-4-25-forage-piloting-data.csv')
 pilot_path_data <- read_csv('data/pilot/3-4-25-path-piloting-data.csv')
+
+# plot theme --------------------------------------------------------------
+
+showtext_opts(dpi = 300)
+showtext_auto()
+font_add_google('Roboto')
 
 # angle estimation correlation --------------------------------------------
 
@@ -102,21 +111,28 @@ all_data |>
 # function to view covariate values visually on each step
 plot_cov_and_path <- function(
     for_num, lvl, col_num, cov = 'dist', path=simul_results, exp_df=expanded_df, 
-    opt='orig_choice'
+    opt='orig_choice', weights = c(1, 1, 1, 1)
 ) {
-  if(cov == 'dist') {
-    strat = 'nn'
-  } 
-  else if (cov == 'ta') {
-    strat == 'ta'
-  }
-  else if(cov == 'clst') {
-    strat == 'clst'
-  }
+  # grab clrs
+  clrs = NatParksPalettes::natparks.pals('Everglades')
+  
+  # # uncomment this if using data with foragers with same num and diff strat
+  # if(cov == 'dist') {
+  #   strat = 'nn'
+  # } 
+  # else if (cov == 'ta') {
+  #   strat = 'ta'
+  # }
+  # else if(cov == 'clst') {
+  #   strat = 'clst'
+  # }
   
   # filter for path
   path_df <- path |> 
-    filter(strategy == strat & forager == for_num & level == lvl) |> 
+    filter(
+      # strategy == strat & 
+      forager == for_num & level == lvl
+    ) |> 
     add_row(
       strategy = simul_results$strategy[1], forager = for_num, level = lvl, 
       nn_weight = simul_results$nn_weight[1], 
@@ -150,26 +166,13 @@ plot_cov_and_path <- function(
       ) +
       scale_color_gradient(
         guide = 'none', low = clrs[6], high = '#E7D22E', na.value = 'black'
-      ) +
-      # guides(
-      #   color = guide_colorbar(
-      #     order = 1, direction = 'horizontal', position = 'top'
-      #   ),
-      #   shape = guide_legend(
-      #     override.aes = list(size = 3), order = 2, position = 'top'
-      #   )
-      # ) +
-      theme_void() 
-      # + theme(
-      #   text = element_text(family = 'Roboto'),
-      #   legend.text = element_text(size = 10), 
-      #   legend.title = element_text(size = 14, face = 'bold'), 
-      #   legend.title.position = 'top', 
-      #   legend.text.position = 'bottom', 
-      #   legend.margin = margin(t = 0, b = 0, r = 10, l = 10)
-      # )
-  } else if(cov == 'ta') {
+      )
+  } 
+  else if(cov == 'ta') {
     # look at ta
+    
+    df <- exp_df |> 
+      filter(forager == for_num & level == lvl & collection_num == col_num)
     
     # determine which would be used
     if(opt != 'orig_choice') {
@@ -181,7 +184,7 @@ plot_cov_and_path <- function(
       df$used[is.na(df$turning_angle)] <- NA
     }
     
-    p <- exp_df |>  
+    p <- df |>  
       ggplot() +
       geom_path(
         data = path_df, aes(x = x, y = y), linewidth = .2, 
@@ -197,40 +200,27 @@ plot_cov_and_path <- function(
         'Chosen?', labels = c('No', 'Yes', 'Current\nposition'), 
         values = c(16, 17), na.value = 13
       ) +
-      scale_size_discrete(guide = 'none', range = c(3,5)) +
+      scale_size_discrete(guide = 'none', range = c(3,5), na.value = 3) +
       scale_color_gradient(
         'Turning angle value', low = clrs[4], high = '#C4DEF1', na.value = 'black'
-      ) +
-      guides(
-        color = guide_colorbar(
-          order = 1, direction = 'horizontal', position = 'top'
-        ),
-        shape = guide_legend(
-          override.aes = list(size = 3), order = 2, position = 'top'
-        )
-      ) +
-      theme_void() +
-      theme(
-        text = element_text(family = 'Aptos'),
-        legend.text = element_text(size = 10), 
-        legend.title = element_text(size = 14, face = 'bold'), 
-        legend.title.position = 'top', 
-        legend.text.position = 'bottom', 
-        legend.margin = margin(t = 0, b = 0, r = 10, l = 10)
       )
-  } else if(cov == 'clst') {
+  } 
+  else if(cov == 'clst') {
     # look at clst
+    
+    df <- exp_df |> 
+      filter(forager == for_num & level == lvl & collection_num == col_num)
     
     if(opt != 'orig_choice') {
       # find which coconut would be chosen
-      df$used <- vector('numeric', length = length(df$turning_angle))
+      df$used <- vector('numeric', length = length(df$neighbor_value))
       
       df$used[which.max(df$neighbor_value)] <- 1
       
-      df$used[is.na(df$turning_angle)] <- NA
+      df$used[is.na(df$neighbor_value)] <- NA
     }
     
-    p <- exp_df |> 
+    p <- df |> 
       ggplot() +
       geom_path(
         data = path_df, aes(x = x, y = y), linewidth = .2, 
@@ -246,31 +236,82 @@ plot_cov_and_path <- function(
         'Chosen?', labels = c('No', 'Yes', 'Current\nposition'), 
         values = c(16, 17), na.value = 13
       ) +
-      scale_size_discrete(guide = 'none', range = c(3,5)) +
+      scale_size_discrete(guide = 'none', range = c(3,5), na.value = 3) +
       scale_color_gradient(
         'Cluster value', low = clrs[1], high = '#C4ECAB', na.value = 'black'
+      )
+  } 
+  else if (cov == 'all') {
+    df <- exp_df |> 
+      filter(forager == for_num & level == lvl & collection_num == col_num) |> 
+      mutate(
+        product = weights[1] * scale(1/distance) + weights[2] * scale(cos(turning_angle)) + 
+          weights[3] * scale(neighbor_value) + weights[4] * scale(point_value)
+      )
+    
+    if(opt != 'orig_choice') {
+      # find which coconut would be chosen
+      df$used <- vector('numeric', length = length(df$product))
+      
+      df$used[which.max(df$product)] <- 1
+      
+      df$used[is.na(df$product)] <- NA
+    }
+    
+    p <- df |> 
+      ggplot() +
+      geom_path(
+        data = path_df, aes(x = x, y = y), linewidth = .2, 
+        arrow = arrow(type = 'closed')
       ) +
-      guides(
-        color = guide_colorbar(
-          order = 1, direction = 'horizontal', position = 'top'
-        ),
-        shape = guide_legend(
-          override.aes = list(size = 3), order = 2, position = 'top'
+      geom_point(
+        aes(
+          x = x, y = y, size = as.factor(point_value), color = product, 
+          shape = as.factor(used)
         )
       ) +
-      theme_void() +
-      theme(
-        text = element_text(family = 'Aptos'),
-        legend.text = element_text(size = 10), 
-        legend.title = element_text(size = 14, face = 'bold'), 
-        legend.title.position = 'top', 
-        legend.text.position = 'bottom', 
-        legend.margin = margin(t = 0, b = 0, r = 10, l = 10)
+      scale_shape_manual(
+        'Chosen?', labels = c('No', 'Yes', 'Current\nposition'), 
+        values = c(16, 17), na.value = 13
+      ) +
+      scale_size_discrete(guide = 'none', range = c(3,5), na.value = 3) +
+      scale_color_viridis_c(
+        'Total value', end = .9, na.value = 'black'
       )
   }
   
+  p <- p +
+    guides(
+      color = guide_colorbar(
+        order = 1, direction = 'horizontal', position = 'top'
+      ),
+      shape = guide_legend(
+        override.aes = list(size = 3), order = 2, position = 'top'
+      )
+    ) +
+    theme_void() +
+    theme(
+      text = element_text(family = 'Roboto'),
+      legend.text = element_text(size = 10), 
+      legend.title = element_text(size = 14, face = 'bold'), 
+      legend.title.position = 'top', 
+      legend.text.position = 'bottom', 
+      legend.margin = margin(t = 0, b = 0, r = 10, l = 10)
+    )
+  
   return(p)
 }
+
+# plot out
+plot_cov_and_path(
+  38, 8, 4, cov = 'all', opt = 'cov_choice', weights = c(.5, .8, 1.5, .5) # nn, ta, clst, pv
+)
+
+# save
+ggsave(
+  'fig_output/simulation/valuation_examples/total_ta_bias_est_step4.pdf', device = 'pdf', 
+  width = 6, height = 6.2, units = 'in'
+)
 
 for(i in 0:15) {
   # plot
