@@ -44,6 +44,9 @@ unique(machine_data$subject)
 
 # clean -------------------------------------------------------------------
 
+# get coco locations locations with ids
+coco_locations <- read_csv('data/level_arrangements/all_levels_arrangements.csv')
+
 # remove pilot data or test runs of study flow, find real participants with 
 # completed game
 (lvls_encountered <- forage_data |> 
@@ -66,6 +69,16 @@ forage_data |> filter(subject == 48527) |> pull(level) |> unique()
 cleaned_forage_data <- forage_data |> 
   filter(subject %in% completed_game) |> 
   arrange(subject, time)
+
+# merge ids w forage data
+cleaned_forage_data <- coco_locations |> 
+  mutate(
+    level = paste0('_level_', level)
+  ) |> 
+  left_join(cleaned_forage_data, by = join_by(level, x, y)) |> 
+  filter(!is.na(subject)) |> 
+  arrange(subject, time) |> 
+  relocate(subject, level, obj_ID)
 
 cleaned_location_data <- location_data |> 
   filter(subject %in% completed_game) |> 
@@ -92,3 +105,5 @@ write_csv(
     )
   )
 )
+
+
