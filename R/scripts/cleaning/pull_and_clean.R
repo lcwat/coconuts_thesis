@@ -42,10 +42,10 @@ unique(machine_data$subject)
 # pilots of the sona/qualtrics link
 
 
-# clean -------------------------------------------------------------------
-
 # get coco locations locations with ids
 coco_locations <- read_csv('data/level_arrangements/all_levels_arrangements.csv')
+
+# clean -------------------------------------------------------------------
 
 # remove pilot data or test runs of study flow, find real participants with 
 # completed game
@@ -89,7 +89,7 @@ write_csv(
   paste0(
     'data/clean_datasets/', 
     str_flatten(
-      c(str_split(date(), ' ')[[1]][c(2,3,5)], 'forage_data.csv'),
+      c(str_split(date(), ' ')[[1]][c(2,4,6)], 'forage_data.csv'),
       collapse = '_'
     )
   )
@@ -100,7 +100,7 @@ write_csv(
   paste0(
     'data/clean_datasets/', 
     str_flatten(
-      c(str_split(date(), ' ')[[1]][c(2,3,5)], 'location_data.csv'),
+      c(str_split(date(), ' ')[[1]][c(2,4,6)], 'location_data.csv'),
       collapse = '_'
     )
   )
