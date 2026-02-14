@@ -35,7 +35,7 @@ machine_data <- dbReadTable(con, "MachineData")
 dbDisconnect(con)
 
 # num subjects
-unique(machine_data$subject)
+unique(forage_data$subject)
 
 # sona assigns five digit ids, any ids not five digits or generated sequences 
 # (e.g., 12345) are pilot tests. one or two of the remaining numbers are from
@@ -84,12 +84,14 @@ cleaned_location_data <- location_data |>
   filter(subject %in% completed_game) |> 
   arrange(subject, time)
 
+date_string <- str_split(date(), ' ')[[1]][c(2,3,5)]
+
 write_csv(
   cleaned_forage_data,
   paste0(
     'data/clean_datasets/', 
     str_flatten(
-      c(str_split(date(), ' ')[[1]][c(2,4,6)], 'forage_data.csv'),
+      c(date_string, 'forage_data.csv'),
       collapse = '_'
     )
   )
@@ -100,7 +102,7 @@ write_csv(
   paste0(
     'data/clean_datasets/', 
     str_flatten(
-      c(str_split(date(), ' ')[[1]][c(2,4,6)], 'location_data.csv'),
+      c(date_string, 'location_data.csv'),
       collapse = '_'
     )
   )
