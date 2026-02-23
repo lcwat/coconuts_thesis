@@ -84,6 +84,10 @@ cleaned_location_data <- location_data |>
   filter(subject %in% completed_game) |> 
   arrange(subject, time)
 
+cleaned_machine_data <- machine_data |> 
+  filter(subject %in% completed_game) |> 
+  arrange(subject)
+
 date_string <- str_split(date(), ' ')[[1]][c(2,3,5)]
 
 write_csv(
@@ -103,6 +107,17 @@ write_csv(
     'data/clean_datasets/', 
     str_flatten(
       c(date_string, 'location_data.csv'),
+      collapse = '_'
+    )
+  )
+)
+
+write_csv(
+  cleaned_machine_data,
+  paste0(
+    'data/clean_datasets/', 
+    str_flatten(
+      c(date_string, 'machine_data.csv'),
       collapse = '_'
     )
   )

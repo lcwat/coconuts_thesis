@@ -17,10 +17,10 @@ participants <- participants |>
   select(survey_id, grantor, credit_type, show_credit)
 
 # make sure to destroy and write anonymized file
-write_csv(participants, 'data/participant_roster/Feb_17_2026_credit_roster.csv')
+write_csv(participants, 'data/participant_roster/Feb_22_2026_credit_roster.csv')
 
 # read in forage data
-forage_data <- read_csv('data/clean_datasets/Feb_5_2026_forage_data.csv')
+forage_data <- read_csv('data/clean_datasets/Feb_22_2026_forage_data.csv')
 
 
 # check completions -------------------------------------------------------
