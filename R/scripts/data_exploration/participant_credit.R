@@ -22,8 +22,11 @@ write_csv(participants, 'data/participant_roster/Feb_22_2026_credit_roster.csv')
 # read in forage data
 forage_data <- read_csv('data/clean_datasets/Feb_22_2026_forage_data.csv')
 
+participants <- read_csv('data/participant_roster/Feb_22_2026_credit_roster.csv')
+
 
 # check completions -------------------------------------------------------
+
 
 # get level count from forage data, 9/10 indicates completion
 levels_completed <- forage_data |> 
