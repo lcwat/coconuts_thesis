@@ -8,6 +8,7 @@
 
 library(tidyverse)
 library(ggridges)
+library(showtext)
 
 # load data ------------------------------------------------------------------
 
@@ -45,34 +46,56 @@ performance <- location_data |>
 
 # checking ----------------------------------------------------------------
 
-# check out any weird values for dist or time
-error_levels <- performance |> 
-  filter(level != '_tutorial' & total_time < 100)
+# check original for weird outliers
+large_values <- performance |> 
+  filter(total_distance > 5000 | total_time > 1000)
 
-# find how many points they got, may have had an early exit from a level but 
-# still completed the game. could be due to similar lag spike issue perhaps with
-# several players playing at once
-points_collected <- forage_data |> 
-  group_by(subject, level) |> 
-  summarize(
-    total_points = max(points), 
-    num_collected = n()
+# some players played the game several times, could maybe try to go back in time
+forage_data |> 
+  filter(subject == 46926 & level == '_level_1') |> 
+  View()
+
+# some pp played game several times, try to see if can parse apart this interleaved data
+(prob_subject <- forage_data |> 
+   filter(subject == 46926) |> 
+   arrange(level, points))
+
+# going to be really tough, just going to locate these folks and remove
+var_size_levels <- c('_level_2', '_level_3', '_level_4', '_level_6', '_level_7', '_level_8', '_level_9')
+
+# see if there are additional entries on specific levels
+entries <- forage_data |> 
+  group_by(subject) |> 
+  count(level) |> 
+  mutate(
+    additional_entries = if_else(
+      level %in% var_size_levels, 
+      n - 200, 
+      n - 350
+    )
   )
 
-error_levels <- error_levels |> left_join(points_collected, join_by(subject, level))
+# see if points gained matches object collected
+forage_point_count <- forage_data |> 
+  select(subject, level, point_value, points, time) |> 
+  group_by(subject, level) |> 
+  arrange(time) |> 
+  mutate(
+    point_discrepancy = lag(point_value, default = 0) - (points - lag(points, default = 0))
+  )
+  
+# collapse across subject and level to see problematic patterns
+discrep <- forage_point_count |> 
+  group_by(subject, level) |> 
+  summarize(
+    total_discrepancy = sum(point_discrepancy)
+  ) |> 
+  filter(total_discrepancy > 50 | total_discrepancy < -50)
 
-# need at minimum 195 collections to complete level, distinguish between bug and
-# truly good performance
-error_levels <- error_levels |> 
-  filter(is.na(num_collected) | num_collected <= 195)
-
-# seems like some players may have run into the rare bug of double spawns
-# some have more consistent issues
-error_levels |> 
-  group_by(subject) |> 
-  count()
-
-# most had 1, but one player had this happen 6 times
+# negative discrepancies mean the player earned more points than anticipated
+# positive discrepancies likely indicate additional playthroughs
+performance_and_rmi_clean <- performance_and_rmi |> 
+  anti_join(discrep, join_by(subject, level))
 
 # check out path and collections
 plot_level_path <- function(subject_id, level_string) {
@@ -98,14 +121,23 @@ plot_level_path <- function(subject_id, level_string) {
     theme_void()
 }
 
-plot_level_path(error_levels$subject[8], error_levels$level[8])
+plot_level_path(large_values$subject[3], large_values$level[3])
 
-# these errors should be dropped from the aggregate data set 
-performance <- performance |> 
-  anti_join(error_levels, join_by(subject, level))
+# try again without problematic players
+location_data_clean <- location_data |> 
+  anti_join(discrep, join_by(subject, level))
 
-num_obs <- performance |> 
-  count(subject)
+performance <- location_data_clean |> 
+  group_by(subject, level) |> 
+  mutate(
+    # euclid distance between each step
+    step_length = sqrt((x-lag(x, default = 0))^2 + (y-lag(y, default = 0))^2)
+  ) |> 
+  summarize(
+    total_time = max(time) - min(time), 
+    total_distance = sum(step_length), 
+    start_time = min(time)
+  )
 
 # arrange by time in level 
 performance <- performance |> 
@@ -121,6 +153,10 @@ performance <- performance |>
     level_order = 1:length(level)
   ) |> 
   ungroup()
+
+# remove times that are implausible even on easiest levels
+performance <- performance |> 
+  filter(total_time > 50)
 
 # rmi ---------------------------------------------------------------------
 
@@ -165,9 +201,65 @@ performance_and_rmi <- performance |>
   inner_join(rmis, join_by(subject, level))
 
 # write to file
-write_csv(performance_and_rmi, 'data/aggregate_data/Feb_22_2026_metrics_summary.csv')
+write_csv(performance_and_rmi, 'data/aggregate_data/cleaned_metrics_summary.csv')
 
 # view --------------------------------------------------------------------
+
+# using time in game b/c correlated with distance
+performance_and_rmi |> 
+  summarize(
+    r = cor(total_distance, total_time)
+  )
+
+performance_and_rmi |> 
+  ggplot(aes(x = total_distance, y = total_time)) +
+  geom_point() +
+  theme_minimal()
+
+# distance values seem off for some players
+performance_and_rmi |> 
+  filter(total_distance < 8000) |> 
+  ggplot(aes(x = log(total_distance), y = log(total_time))) +
+  geom_point() +
+  theme_minimal()
+
+
+# plot theme --------------------------------------------------------------
+
+# set colors and font
+clrs <- NatParksPalettes::natparks.pals('Everglades')
+showtext_opts(dpi = 300)
+showtext_auto()
+font_paths('C:\\Users\\lcwat\\AppData\\Local\\Microsoft\\Windows\\Fonts')
+font_add('Aptos', regular = 'Aptos.ttf')
+
+# presentation font
+font_add_google('Roboto')
+
+proposal_theme <- function() {
+  theme_bw() +
+    theme(
+      panel.border = element_blank(), 
+      panel.background = element_blank(), 
+      plot.background = element_blank(), 
+      legend.background = element_blank(),
+      panel.grid = element_blank(), 
+      axis.line = element_line(color = 'grey20', linewidth = .75),
+      axis.ticks = element_line(color = 'grey20', linewidth = .5),
+      text = element_text(family = 'Roboto'),
+      axis.text = element_text(size = 10), 
+      axis.title = element_text(size = 14, face = 'bold'), 
+      legend.text = element_text(size = 10), 
+      legend.title = element_text(size = 14, face = 'bold'),
+      legend.position = 'top', 
+      legend.justification = 'left', 
+      legend.direction = 'horizontal'
+    )
+}
+
+
+# comparison to simulation ------------------------------------------------
+
 
 # see how time differed across levels by participants
 performance_and_rmi |> 
@@ -179,9 +271,6 @@ performance_and_rmi |>
   
   theme_bw() +
   facet_wrap(~level)
-
-# ridges to simulation
-clrs = NatParksPalettes::natparks.pals('Everglades')
 
 performance_and_rmi |> 
   mutate(
@@ -252,8 +341,16 @@ ggsave(
 
 # paths
 plot_paths <- function(lvl = 1) {
+  lvl_string = paste0('_level_', lvl)
+  
+  sub_ids = performance_and_rmi |> filter(level == lvl_string) |> pull(subject)
+  
   location_data |> 
-    filter(level == paste0('_level_', lvl)) |> 
+    filter(subject %in% sub_ids & level == lvl_string) |> 
+    left_join(performance_and_rmi) |> 
+    mutate(
+      subject = fct_reorder(factor(subject), total_time) # order by time
+    ) |> 
     ggplot() +
     
     geom_point(
@@ -261,20 +358,68 @@ plot_paths <- function(lvl = 1) {
       aes(x = x, y = y, size = as.factor(point_value))
     ) +
     
-    geom_path(aes(x = x, y = y, color = as.factor(subject)), linewidth = .001) +
+    geom_path(aes(x = x, y = y, color = total_time), linewidth = .15) +
     
     scale_size_discrete(guide = 'none', range = c(.2, .8)) +
     
-    scale_color_viridis_d(guide = 'none', option = 'magma', begin = .2, end = .9) +
+    scale_color_viridis_c('Time (s)', option = 'magma', begin = .2, end = .9, direction = -1) +
     
-    theme_void() +
+    proposal_theme() +
+    
+    theme(
+      axis.line = element_blank(), 
+      axis.text = element_blank(), 
+      axis.title = element_blank(), 
+      axis.ticks = element_blank(), 
+      panel.border = element_rect(linewidth = .25, color = 'grey40'), 
+      strip.background = element_blank(), 
+      strip.text = element_text(face = 'italic', size = 5)
+    ) +
     
     facet_wrap(~subject)
 }
 
-p <- plot_paths(lvl = 10)
+for(i in 1:10) {
+  p <- plot_paths(lvl = i)
+  
+  ggsave(
+    paste0('fig_output/participants/path_comparisons/level_', i, '_paths.pdf'), p,
+    device = 'pdf', width = 8, height = 10, units = 'in'
+  )
+}
 
-ggsave(
-  'fig_output/participants/path_comparisons/level_10_paths.pdf', p,
-  device = 'pdf', width = 8, height = 10, units = 'in'
-)
+
+# speed -------------------------------------------------------------------
+
+# could speed play a factor?
+
+# new df
+location_data_clean <- location_data |> 
+  inner_join(performance_and_rmi, join_by(subject, level))
+
+location_data_clean <- location_data_clean |> 
+  group_by(subject, level) |> 
+  mutate(
+    # euclid distance between each step
+    step_length = sqrt((x-lag(x, default = 0))^2 + (y-lag(y, default = 0))^2), 
+    delta_time = time - lag(time, default = 0),
+    velocity = step_length / delta_time
+  )
+
+# plot it
+velo_performance <- location_data_clean |> 
+  group_by(subject, level) |> 
+  summarize(
+    total_time = max(time) - min(time), 
+    total_distance = sum(step_length), 
+    avg_velocity = mean(velocity)
+  )
+  
+velo_performance |> 
+  ggplot() +
+  geom_point(aes(x = avg_velocity, y = total_time)) +
+  proposal_theme() +
+  facet_wrap(~level)
+
+# doesn't seem to explain much of outcome, most pp stuck to good velocity over course
+# of the whole level, more important is the order and efficiency of the path

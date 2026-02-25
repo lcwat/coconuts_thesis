@@ -10,9 +10,7 @@ library(brms)
 
 # load data ---------------------------------------------------------------
 
-performance_and_rmi <- read_csv(
-  'data/aggregate_data/Feb_22_2026_metrics_summary.csv'
-)
+performance_and_rmi <- read_csv('data/aggregate_data/cleaned_metrics_summary.csv')
 
 # clean data --------------------------------------------------------------
 
@@ -46,17 +44,25 @@ performance_and_rmi <- performance_and_rmi |>
     level = factor(level)
   )
 
+# standardize variables
+performance_and_rmi <- performance_and_rmi |> 
+  mutate(
+    s_total_time = (total_time - mean(total_time)) / sd(total_time), 
+    s_rmi = (rmi - mean(rmi)) / sd(rmi),
+    s_time_in_game = (level_order - mean(level_order)) / sd(level_order)
+  )
+
 # glimpse changes
 glimpse(performance_and_rmi)
+summary(performance_and_rmi)
 
 # generative model --------------------------------------------------------
 
 # depending on specific level and how long player has been playing, their 
 # performance should be affected 
 
-# Time to complete <- Time in game + (Time in game | Level:Subject)
-# RMI <- Time in game + (Time in game | Level:Subject)
-# Time to complete <- RMI * Time in game + (RMI * Time in game | Level:Subject)
+# Time to complete <- RMI * Time in game + (RMI * Time in game | Subject) + 
+#   (RMI * Time in game | Level)
 
 # estimand ----------------------------------------------------------------
 
@@ -69,7 +75,8 @@ glimpse(performance_and_rmi)
 
 # find what priors need to be defined
 perf_by_time_priors <- get_prior(
-  total_time ~ level_order + (level_order | level:subject), 
+  total_time ~ s_time_in_game * s_rmi + (s_time_in_game * s_rmi | subject) + 
+    (s_time_in_game * s_rmi | level), 
   family = Gamma(link = 'log'),
   data = performance_and_rmi
 )
