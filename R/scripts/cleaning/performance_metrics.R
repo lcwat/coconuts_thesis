@@ -13,8 +13,9 @@ library(showtext)
 # load data ------------------------------------------------------------------
 
 # load in datasets
-forage_data <- read_csv('data/clean_datasets/Feb_22_2026_forage_data.csv')
-location_data <- read_csv('data/clean_datasets/Feb_22_2026_location_data.csv')
+# forage_data <- read_csv('data/clean_datasets/Feb_22_2026_forage_data.csv')
+forage_data <- read_csv('data/clean_datasets/imputed_forage_data.csv')
+location_data <- read_csv('data/clean_datasets/clean_location_data.csv')
 
 # coconut locations with ids
 coco_locations <- read_csv('data/level_arrangements/all_levels_arrangements.csv')
@@ -44,11 +45,9 @@ performance <- location_data |>
     start_time = min(time)
   )
 
-# checking ----------------------------------------------------------------
+summary(performance)
 
-# check original for weird outliers
-large_values <- performance |> 
-  filter(total_distance > 5000 | total_time > 1000)
+# checking ----------------------------------------------------------------
 
 # some players played the game several times, could maybe try to go back in time
 forage_data |> 
@@ -162,11 +161,11 @@ performance <- performance |>
 
 
 rmis <- tibble(
-  subject = numeric(), level = character(), rmi = numeric()
+  subject = numeric(), level = numeric(), rmi = numeric()
 )
 
 # set seed for reproducability
-set.seed(2232026)
+set.seed(3022026)
 
 # length for progress tracker
 len_subj = length(unique(performance$subject))
@@ -216,13 +215,6 @@ performance_and_rmi |>
   geom_point() +
   theme_minimal()
 
-# distance values seem off for some players
-performance_and_rmi |> 
-  filter(total_distance < 8000) |> 
-  ggplot(aes(x = log(total_distance), y = log(total_time))) +
-  geom_point() +
-  theme_minimal()
-
 
 # plot theme --------------------------------------------------------------
 
@@ -230,8 +222,6 @@ performance_and_rmi |>
 clrs <- NatParksPalettes::natparks.pals('Everglades')
 showtext_opts(dpi = 300)
 showtext_auto()
-font_paths('C:\\Users\\lcwat\\AppData\\Local\\Microsoft\\Windows\\Fonts')
-font_add('Aptos', regular = 'Aptos.ttf')
 
 # presentation font
 font_add_google('Roboto')
@@ -273,24 +263,21 @@ performance_and_rmi |>
   facet_wrap(~level)
 
 performance_and_rmi |> 
-  mutate(
-    level = as.numeric(str_extract(level, '[0-9]+')), 
-    strategy = 'participant'  
-  ) |> 
+  mutate(strategy = 'participant') |> 
   bind_rows(simul_perf_and_rmi) |> 
   mutate(
-    strategy = as.factor(strategy)
+    strategy = factor(strategy, levels = c('clst', 'ta', 'nn', 'participant'))
   ) |> 
   ggplot(
     aes(x = total_time, y = as.factor(level), fill = strategy)
   ) +
   
-  geom_density_ridges() +
+  geom_density_ridges(alpha = .8) +
   
   scale_x_continuous(n.breaks = 10) +
   scale_fill_manual(
-    'Strategy', values = c(clrs[1], clrs[6], 'red', clrs[4]), 
-    labels = c('Cluster', 'Nearest neighbor', 'Players', 'Turning angle')
+    'Strategy', values = c(clrs[1], clrs[4], clrs[6], 'red'), 
+    labels = c('Cluster', 'Turning Angle', 'Nearest neighbor', 'Players')
   ) +
   
   labs(
@@ -307,28 +294,25 @@ ggsave(
 
 # rmi
 performance_and_rmi |> 
-  mutate(
-    level = as.numeric(str_extract(level, '[0-9]+')), 
-    strategy = 'participant'  
-  ) |> 
+  mutate(strategy = 'participant') |> 
   bind_rows(simul_perf_and_rmi) |> 
   mutate(
-    strategy = as.factor(strategy)
+    strategy = factor(strategy, levels = c('clst', 'ta', 'nn', 'participant'))
   ) |> 
   ggplot(
     aes(x = rmi, y = as.factor(level), fill = strategy)
   ) +
   
-  geom_density_ridges() +
+  geom_density_ridges(alpha = .8) +
   
-  scale_x_continuous(n.breaks = 10, limits = c(0, 1)) +
+  scale_x_continuous(n.breaks = 10) +
   scale_fill_manual(
-    'Strategy', values = c(clrs[1], clrs[6], 'red', clrs[4]), 
-    labels = c('Cluster', 'Nearest neighbor', 'Players', 'Turning angle')
+    'Strategy', values = c(clrs[1], clrs[4], clrs[6], 'red'), 
+    labels = c('Cluster', 'Turning Angle', 'Nearest neighbor', 'Players')
   ) +
   
   labs(
-    x = 'RMI', 
+    x = 'time (s)', 
     y = 'game level'
   ) +
   
@@ -338,6 +322,14 @@ ggsave(
   'fig_output/participants/performance_analysis/player_to_sim_rmi_comparison_ridges.pdf', 
   device = 'pdf', width = 10, height = 12, units = 'in'
 )
+
+# see how each changed over course of game for subjects
+performance_and_rmi |> 
+  ggplot(aes(x = start_time, y = total_time, color = as.factor(subject))) +
+  geom_line(alpha = .2) +
+  geom_smooth(color = 'orange') +
+  scale_color_viridis_d(guide = 'none') +
+  proposal_theme()
 
 # paths
 plot_paths <- function(lvl = 1) {
@@ -420,6 +412,12 @@ velo_performance |>
   geom_point(aes(x = avg_velocity, y = total_time)) +
   proposal_theme() +
   facet_wrap(~level)
+
+location_data_clean |>
+  filter(subject == 47192) |> 
+  ggplot(aes(x = time, y = velocity)) +
+  geom_line() +
+  facet_wrap(~level, scale = 'free_x')
 
 # doesn't seem to explain much of outcome, most pp stuck to good velocity over course
 # of the whole level, more important is the order and efficiency of the path

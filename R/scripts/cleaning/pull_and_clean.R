@@ -346,3 +346,6 @@ plot_forage_path <- function(subj = numeric(), lvl = numeric(), collection = num
 }
 
 plot_forage_path(48543, 9, 200)
+
+# now can write to disc
+write_csv(imputed_df, 'data/clean_datasets/imputed_forage_data.csv')
