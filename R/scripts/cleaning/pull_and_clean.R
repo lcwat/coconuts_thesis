@@ -147,6 +147,9 @@ for (i in 1:length(subj_to_keep)) {
     slice_forage <- cleaned_forage_data_count |>
       filter(subject == subj & level == j)
     
+    # get min time
+    start_time = min(slice_forage$time)
+    
     if (nrow(slice_forage) < 1) {
       # no level, so skip
       next
@@ -156,15 +159,25 @@ for (i in 1:length(subj_to_keep)) {
     slice_path <- clean_location_data |>
       filter(subject == subj & level == j)
     
-    collect_df <- tibble(obj_ID = numeric(), respawn_time = numeric())
-    
     # run loop to check and impute correct ids for errant collection data
     for (k in 1:nrow(slice_forage)) {
       
-      if (nrow(collect_df) > 0) {
-        # check if should be respawned
-        collect_df <- collect_df |>
-          filter(respawn_time <= slice_forage[k, ]$time) # remove coco that should be available
+      # get list of obj_ids to not choose from, +/-5s from current col time
+      min_window = slice_forage[k,]$time - 5
+      max_window = slice_forage[k,]$time + 5
+      
+      # make sure that coco have started actually respawning 
+      if(min_window < start_time) {
+        # only look at max
+        coll_obj_ids <- slice_forage |> 
+          filter(time <= max_window) |> 
+          pull(obj_ID)
+      }
+      else {
+        # get full window with min and max ids
+        coll_obj_ids <- slice_forage |> 
+          filter(time > min_window & time <= max_window) |> 
+          pull(obj_ID)
       }
       
       # check if last row
@@ -181,19 +194,14 @@ for (i in 1:length(subj_to_keep)) {
         path_point = slice_path |> filter(time <= slice_forage[k, ]$time) |> slice_tail(n = 1)
         size = slice_forage[k, ]$point_value
         
-        # extra info about next collection to break ties if needed
-        # list of obj to not consider, collected obj and next obj
-        no_obj <- collect_df |> pull(obj_ID)
-        
-        no_obj <- c(
-          no_obj, slice_forage[k + 1,] |> pull(obj_ID), 
-          slice_forage[k - 1,] |> pull(obj_ID)
-        )
-        
+        # get possible candidates by filtering out nuts that have already been
+        # collected and those that are collected in the future
         candidate_nuts <- coco_locations |>
-          filter(point_value == size & level == slice_forage[k, ]$level) |> 
-          mutate(dist = sqrt((path_point$x - x)^2 + (path_point$y - y)^2)) |> 
-          filter(!obj_ID %in% no_obj)
+          filter(
+            level == slice_forage[k, ]$level & 
+              !obj_ID %in% coll_obj_ids
+          ) |> 
+          mutate(dist = sqrt((path_point$x - x)^2 + (path_point$y - y)^2)) # get distance
         
         # find closest nut that is likely the correct one collected
         nut <- candidate_nuts |>
@@ -239,13 +247,9 @@ for (i in 1:length(subj_to_keep)) {
             time = slice_forage[k, ]$time
           )
       }
-      # add row to imputed df
-      # add to collection df
-      collect_df <- collect_df |>
-        add_row(obj_ID = slice_forage[i, ]$obj_ID,
-                respawn_time = slice_forage[i, ]$time + 5)
     }
   }
+  
   # write to file
   write_csv(
     imputed_forage_data, paste0('data/imputations/', subj, '_imputed_forage_data.csv')
@@ -286,6 +290,12 @@ imputed_count <- imputed_df |>
       if_else(time - lag(time, default = 0) <= 5, T, F),
       F
     ),
+    spaced_dc = if_else(
+      lead(new_x, default = 0) == lag(new_x, default = 0) &
+        lead(new_y, default = 0) == lag(new_y, default = 0), 
+      if_else(time - lag(time, default = 0) <= 5, T, F), 
+      F
+    ),
     collection_num = 1:length(level)
   )
 
@@ -294,6 +304,7 @@ impute_count_summary <- imputed_count |>
   summarize(
     old_dc = sum(old_double_count), 
     new_dc = sum(new_double_count), 
+    spaced_dc = sum(spaced_dc),
     both_dc = sum(old_double_count & new_double_count)
   ) |> 
   View()
@@ -349,3 +360,4 @@ plot_forage_path(48543, 9, 200)
 
 # now can write to disc
 write_csv(imputed_df, 'data/clean_datasets/imputed_forage_data.csv')
+
