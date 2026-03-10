@@ -275,6 +275,8 @@ for(file_name in dfs_file_list) {
   imputed_df <- rbind(imputed_df, df_to_add)
 }
 
+# load in imputed df
+imputed_df <- read_csv('data/clean_datasets/imputed_forage_data.csv')
 
 # check for double counts
 imputed_count <- imputed_df |> 
@@ -299,6 +301,8 @@ imputed_count <- imputed_df |>
     collection_num = 1:length(level)
   )
 
+summary(imputed_count)
+
 impute_count_summary <- imputed_count |> 
   group_by(subject, level) |> 
   summarize(
@@ -310,7 +314,11 @@ impute_count_summary <- imputed_count |>
   View()
 
 imputed_count |> 
-  filter(new_double_count == T)
+  filter(spaced_dc == T)
+
+# remove spaced double counts
+imputed_clean <- imputed_count |> 
+  filter(!spaced_dc)
 
 imputed_count |> 
   filter(subject == 48543 & level == 9 & collection_num < 205 & collection_num > 195) |> 
@@ -359,5 +367,5 @@ plot_forage_path <- function(subj = numeric(), lvl = numeric(), collection = num
 plot_forage_path(48543, 9, 200)
 
 # now can write to disc
-write_csv(imputed_df, 'data/clean_datasets/imputed_forage_data.csv')
+write_csv(imputed_clean, 'data/clean_datasets/imputed_forage_data.csv')
 
