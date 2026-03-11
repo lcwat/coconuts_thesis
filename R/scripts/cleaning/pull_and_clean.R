@@ -275,8 +275,16 @@ for(file_name in dfs_file_list) {
   imputed_df <- rbind(imputed_df, df_to_add)
 }
 
+
+# check out imputed df ----------------------------------------------------
+
+
 # load in imputed df
 imputed_df <- read_csv('data/clean_datasets/imputed_forage_data.csv')
+
+# get obj locs and clean location data if not already in 
+coco_locations <- read_csv('data/level_arrangements/all_levels_arrangements.csv')
+clean_location_data <- read_csv('data/clean_datasets/clean_location_data.csv')
 
 # check for double counts
 imputed_count <- imputed_df |> 
@@ -301,7 +309,7 @@ imputed_count <- imputed_df |>
     collection_num = 1:length(level)
   )
 
-summary(imputed_count)
+summary(imputed_clean)
 
 impute_count_summary <- imputed_count |> 
   group_by(subject, level) |> 
@@ -318,20 +326,25 @@ imputed_count |>
 
 # remove spaced double counts
 imputed_clean <- imputed_count |> 
-  filter(!spaced_dc)
+  filter(!spaced_dc & !new_double_count)
 
+# now can write to disc
+write_csv(imputed_clean, 'data/clean_datasets/imputed_forage_data.csv')
+
+# check out slices of imputations
 imputed_count |> 
   filter(subject == 48543 & level == 9 & collection_num < 205 & collection_num > 195) |> 
   View()
 
+# plot paths
 plot_forage_path <- function(subj = numeric(), lvl = numeric(), collection = numeric()) {
   # determine cutoff time slice
-  cutoff_time = imputed_count |> 
+  cutoff_time = imputed_df |> 
     filter(subject == subj & level == lvl & collection_num == collection) |> 
     pull(time)
   
   # determine how many collections to show
-  forage_df <- imputed_count |> 
+  forage_df <- imputed_df |> 
     filter(
       subject == subj & level == lvl & collection_num <= collection & 
         time > cutoff_time - 5
@@ -351,6 +364,10 @@ plot_forage_path <- function(subj = numeric(), lvl = numeric(), collection = num
       data = coco_locations |> filter(level == lvl), 
       aes(x = x, y = y, size = as.factor(point_value))
     ) +
+    geom_text(
+      data = coco_locations |> filter(level == lvl), 
+      aes(x = x, y = y+1.5, label = obj_ID), size = 3
+    ) +
     geom_path(
       data = path_df, aes(x = x, y = y, alpha = time), color = 'dodgerblue', 
       arrow = arrow(angle = 20)
@@ -364,8 +381,7 @@ plot_forage_path <- function(subj = numeric(), lvl = numeric(), collection = num
     theme(panel.grid = element_line(linetype = 1, linewidth = .5))
 }
 
-plot_forage_path(48543, 9, 200)
+plot_forage_path(46986, 1, 6)
 
-# now can write to disc
-write_csv(imputed_clean, 'data/clean_datasets/imputed_forage_data.csv')
+
 
