@@ -165,7 +165,7 @@ rmis <- tibble(
 )
 
 # set seed for reproducability
-set.seed(3022026)
+set.seed(3112026)
 
 # length for progress tracker
 len_subj = length(unique(performance$subject))
@@ -305,7 +305,7 @@ performance_and_rmi |>
   
   geom_density_ridges(alpha = .8) +
   
-  scale_x_continuous(n.breaks = 10) +
+  scale_x_continuous(n.breaks = 10, limits = c(0, 1)) +
   scale_fill_manual(
     'Strategy', values = c(clrs[1], clrs[4], clrs[6], 'red'), 
     labels = c('Cluster', 'Turning Angle', 'Nearest neighbor', 'Players')

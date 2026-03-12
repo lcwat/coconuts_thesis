@@ -51,6 +51,22 @@ coco_locations <- read_csv('data/level_arrangements/all_levels_arrangements.csv'
 forage_data <- read_csv('data/raw_extract/raw/Feb_22_2026_raw_forage_data.csv')
 location_data <- read_csv('data/raw_extract/raw/Feb_22_2026_raw_location_data.csv')
 
+# check level transitions
+transitions <- location_data |>
+  mutate(
+    level_switch = if_else(
+      lag(level, default = '') != level, T, F
+    )
+  ) |> 
+  filter(level_switch)
+
+transitions <- transitions |> 
+  group_by(subject, level) |> 
+  mutate(
+    missed_start = if_else(x != 0 & y != 0, T, F)
+  ) |> 
+  filter(missed_start)
+
 # remove pilot data or test runs of study flow, find real participants with 
 # completed game
 (lvls_encountered <- forage_data |> 
@@ -122,7 +138,7 @@ cleaned_forage_data_count <- cleaned_forage_data_count |>
 
 # clean location data
 clean_location_data <- location_data |>
-  filter(subject %in% subj_to_keep) |>
+  filter(subject %in% subj_to_keep & level != '_tutorial') |>
   mutate(level = as.numeric(str_extract(level, '[0-9]+')))
 
 # loop through subjects and levels, slice and impute
@@ -286,6 +302,18 @@ imputed_df <- read_csv('data/clean_datasets/imputed_forage_data.csv')
 coco_locations <- read_csv('data/level_arrangements/all_levels_arrangements.csv')
 clean_location_data <- read_csv('data/clean_datasets/clean_location_data.csv')
 
+clean_location_data <- clean_location_data |> 
+  group_by(subject, level) |> 
+  arrange(time)
+
+p <- clean_location_data |> filter(subject == 47835 & level == 4)
+c <- imputed_df |> filter(subject == 47835 & level == 4)
+
+p[2, 'time'] - c[2, 'time']
+
+# get expanded data
+expanded_df <- read_csv('data/participant_expansion/exp_for_46986_lvl_1.csv')
+
 # check for double counts
 imputed_count <- imputed_df |> 
   group_by(subject, level) |> 
@@ -381,7 +409,81 @@ plot_forage_path <- function(subj = numeric(), lvl = numeric(), collection = num
     theme(panel.grid = element_line(linetype = 1, linewidth = .5))
 }
 
-plot_forage_path(46986, 1, 6)
+plot_forage_path(47835, 4, 5)
 
 
+# plot with expanded data
+plot_expanded_path <- function(
+    subj = numeric(), lvl = numeric(), collection = numeric(), 
+    covariate = 'none'
+  ) {
+  # determine cutoff time slice
+  cutoff_time = imputed_df |> 
+    filter(subject == subj & level == lvl & collection_num == collection) |> 
+    pull(time)
+  
+  # get path slice
+  path_df = clean_location_data |> 
+    filter(subject == subj & level == lvl & time <= cutoff_time)
+  
+  # slice expanded df
+  s_exp = expanded_df |> 
+    filter(collection_num == collection) |> 
+    left_join(coco_locations |> filter(level == 1), join_by(obj_ID, point_value))
+  
+  # plot
+  p = ggplot() +
+    geom_text(
+      data = s_exp, 
+      aes(x = x, y = y+1.5, label = obj_ID), size = 3
+    ) +
+    geom_path(
+      data = path_df, aes(x = x, y = y, alpha = time), color = 'dodgerblue', 
+      arrow = arrow(angle = 20)
+    )
+  
+  if (covariate == 'distance') {
+    p = p + 
+      geom_point(
+        data = s_exp, 
+        aes(x = x, y = y, size = as.factor(point_value), color = distance, shape = as.factor(used))
+      ) +
+      scale_color_viridis_c(direction = -1, option = 'magma', end = .85) 
+  }
+  else if (covariate == 'ta') {
+    p = p + 
+      geom_point(
+        data = s_exp, 
+        aes(x = x, y = y, size = as.factor(point_value), color = cos(turning_angle), shape = as.factor(used))
+      ) +
+      scale_color_viridis_c(option = 'magma', end = .85) 
+  }
+  else if (covariate == 'clst') {
+    p = p + 
+      geom_point(
+        data = s_exp, 
+        aes(x = x, y = y, size = as.factor(point_value), color = neighbor_value, shape = as.factor(used))
+      ) +
+      scale_color_viridis_c(option = 'magma', end = .85)
+  }
+  else {
+    # no cov
+    p = p + 
+      geom_point(
+        data = s_exp, 
+        aes(x = x, y = y, size = as.factor(point_value), shape = as.factor(used))
+      )
+  }
+  
+  # add theme
+  p = p + 
+    scale_alpha_continuous(guide = 'none') +
+    scale_shape_manual(values = c(16, 13)) +
+    theme_void()
+  
+  return(p)
+}
 
+plot_expanded_path(46986, 1, 5, covariate = 'clst')
+
+  
