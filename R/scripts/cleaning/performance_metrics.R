@@ -2,7 +2,14 @@
 # Spring 2026
 # Luke Watson
 
-# this script creates the performance metrics file from the pulled data
+# this script creates the performance metrics file from the pulled data along the
+# way I used metrics to define runs of the game that were missing observations or
+# just without sufficient data to get estimates of performance and RMI or expand
+
+# dropped 8 subjects for incomplete runs/data: 100 -> 92
+# dropped 5 subjects with interleaved data from playing game more than once: 92 -> 87
+# 859 remaining levels from these 87 participants (some have fewer valid levels than others)
+# dropped 24 levels where data collection began too late into level: 859 -> 835 (final)
 
 # load libraries -------------------------------------------------------------
 
@@ -24,7 +31,7 @@ coco_locations <- read_csv('data/level_arrangements/all_levels_arrangements.csv'
 simul_perf_and_rmi <- read_csv('data/simulation/performance/perf_and_rmi_summary.csv')
 
 # created performance file from code below
-performance_and_rmi <- read_csv('data/aggregate_data/cleaned_metrics_summary.csv')
+performance_and_rmi <- read_csv('data/clean_datasets/cleaned_metrics_summary.csv')
 
 # source functions --------------------------------------------------------
 
@@ -58,6 +65,25 @@ arr_ld_summary <- arr_ld_summary |>
     lag_time = min_time - lag(max_time, default = 0)
   )
 
+
+# create col with correct performances
+arr_ld_summary <- arr_ld_summary |> 
+  mutate(
+    true_time = if_else(
+      min_time == lag_time, time_start_2_end, time_end_2_end
+    )
+  )
+
+# look at quantiles across participants
+arr_ld_summary <- arr_ld_summary |> 
+  group_by(level) |> 
+  mutate(
+    percentile = percent_rank(true_time)
+  )
+
+# for this subject, their level 9 ended abruptly, the following level appears 
+# to have lost some observations as well resulting in an outlier performance
+
 # check out odd times
 arr_ld_summary |> 
   ggplot(aes(x = true_time)) +
@@ -69,20 +95,7 @@ arr_ld_summary |>
   ) +
   facet_wrap(~level)
 
-# for this subject, their level 9 ended abruptly, the following level appears 
-# to have lost some observations as well resulting in an outlier performance
-
-# look at quantiles across participants
-arr_ld_summary <- arr_ld_summary |> 
-  group_by(level) |> 
-  mutate(
-    percentile = percent_rank(true_time)
-  )
-
-forage_data |> 
-  filter(subject == 47601 & level == 9) |> 
-  View()
-
+# see shortened path
 location_data |> 
   filter(subject == 47601 & level == 5) |> 
   filter(time < min(time) + 10) |> 
@@ -94,13 +107,6 @@ location_data |>
   ) +
   theme_void()
 
-# create col with correct performances
-arr_ld_summary <- arr_ld_summary |> 
-  mutate(
-    true_time = if_else(
-      min_time == lag_time, time_start_2_end, time_end_2_end
-    )
-  )
 
 # identify bad levels by seeing if those levels have lag time that indicate 
 # missing observations to start the level and levels that ended prematurely 
@@ -121,16 +127,57 @@ nrow(arr_ld_summary)-nrow(arr_ld_summary_clean)
 
 # drops 24 rows
 
+summary(arr_ld_summary_clean)
+
 # select only subj and level
 performance <- arr_ld_summary_clean |> 
-  select(subject, level, true_time)
+  select(subject, level, true_time, min_time)
+
+# create level order var
+performance <- performance |> 
+  group_by(subject) |> 
+  arrange(min_time, .by_group = T) |> 
+  mutate(
+    level_order = 1:length(level)
+  )
 
 # filter out these bad levels in other dataframes
 forage_data_clean <- forage_data |> 
-  inner_join(performance)
+  inner_join(performance) |> 
+  select(subject:collection_num)
+
+location_data_clean <- location_data |> 
+  inner_join(performance) |> 
+  select(subject:time)
+
+# arrange by time
+location_data_clean <- location_data |> 
+  group_by(subject) |> 
+  arrange(time, .by_group = T)
+
+forage_data_clean <- forage_data |> 
+  group_by(subject) |> 
+  arrange(time, .by_group = T)
+
+# remove other problematic participants (double plays or errant levels)
+performance <- performance |> 
+  filter(subject != 48948 & level != 1)
+
+# go through and find particip/levels that aren't in imputed forage data
+merge_ifd <- forage_data |> 
+  group_by(subject, level) |> 
+  count()
+
+# inner join
+performance <- performance |> 
+  inner_join(merge_ifd)
+
+performance <- performance |> 
+  rename(coco_count = n)
 
 # write to file
 write_csv(forage_data_clean, 'data/clean_datasets/imputed_forage_data.csv')
+write_csv(location_data_clean, 'data/clean_datasets/clean_location_data.csv')
 
 # rmi ---------------------------------------------------------------------
 
@@ -173,24 +220,10 @@ for(i in unique(performance$subject)) {
 
 # join both
 performance_and_rmi <- performance |> 
-  inner_join(rmis, join_by(subject, level))
+  left_join(rmis)
 
 # write to file
-write_csv(performance_and_rmi, 'data/aggregate_data/cleaned_metrics_summary.csv')
-
-# view --------------------------------------------------------------------
-
-# using time in game b/c correlated with distance
-performance_and_rmi |> 
-  summarize(
-    r = cor(total_distance, total_time)
-  )
-
-performance_and_rmi |> 
-  ggplot(aes(x = total_distance, y = total_time)) +
-  geom_point() +
-  theme_minimal()
-
+write_csv(performance_and_rmi, 'data/clean_datasets/cleaned_metrics_summary.csv')
 
 # plot theme --------------------------------------------------------------
 
@@ -229,17 +262,38 @@ proposal_theme <- function() {
 
 # see how time differed across levels by participants
 performance_and_rmi |> 
-  ggplot(aes(x = rmi, y = log(total_time), color = as.factor(subject))) +
+  ggplot(aes(x = rmi, y = true_time, color = as.factor(level))) +
   
-  geom_point() +
+  geom_point(shape = 1) +
   
   scale_color_viridis_d(guide = 'none', begin = .2, end = .9) +
   
-  theme_bw() +
-  facet_wrap(~level)
+  labs(y = 'time (s)', x = 'RMI') +
+  
+  facet_wrap(~level) +
+  
+  proposal_theme() +
+  
+  theme(
+    strip.background = element_rect(color = NA, fill = 'wheat2'), 
+    panel.border = element_rect(fill = NA, color = 'grey20', linewidth = .75),
+    axis.line = element_blank(), 
+    panel.spacing = unit(1.4, 'lines')
+  )
+  
+
+ggsave(
+  'fig_output/participants/performance_analysis/initial_perf_rmi_comp.pdf', 
+  device = 'pdf', width = 8, height = 6, units = 'in'
+)
 
 performance_and_rmi |> 
-  mutate(strategy = 'participant') |> 
+  mutate(
+    strategy = 'participant'
+  ) |> 
+  rename(
+    total_time = true_time
+  ) |> 
   bind_rows(simul_perf_and_rmi) |> 
   mutate(
     strategy = factor(strategy, levels = c('clst', 'ta', 'nn', 'participant'))
@@ -265,7 +319,7 @@ performance_and_rmi |>
 
 ggsave(
   'fig_output/participants/performance_analysis/player_to_sim_perf_comparison_ridges.pdf', 
-  device = 'pdf', width = 10, height = 12, units = 'in'
+  device = 'pdf', width = 8, height = 9, units = 'in'
 )
 
 # rmi
@@ -288,7 +342,7 @@ performance_and_rmi |>
   ) +
   
   labs(
-    x = 'time (s)', 
+    x = 'RMI', 
     y = 'game level'
   ) +
   
@@ -296,12 +350,12 @@ performance_and_rmi |>
 
 ggsave(
   'fig_output/participants/performance_analysis/player_to_sim_rmi_comparison_ridges.pdf', 
-  device = 'pdf', width = 10, height = 12, units = 'in'
+  device = 'pdf', width = 8, height = 9, units = 'in'
 )
 
 # see how each changed over course of game for subjects
 performance_and_rmi |> 
-  ggplot(aes(x = start_time, y = total_time, color = as.factor(subject))) +
+  ggplot(aes(x = min_time, y = true_time, color = as.factor(subject))) +
   geom_line(alpha = .2) +
   geom_smooth(color = 'orange') +
   scale_color_viridis_d(guide = 'none') +

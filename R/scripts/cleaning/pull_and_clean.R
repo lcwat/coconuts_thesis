@@ -91,7 +91,6 @@ cleaned_forage_data_count <- cleaned_forage_data |>
     )
   )
 
-
 # find double plays
 cleaned_forage_data_count_summary <- cleaned_forage_data_count |>
   group_by(subject) |>
@@ -101,7 +100,6 @@ subj_to_keep <- cleaned_forage_data_count_summary |>
   filter(double_play == T & n <= 11) |>
   pull(subject)
 
-
 # clean df
 cleaned_forage_data_count <- cleaned_forage_data_count |>
   filter(subject %in% subj_to_keep & level != '_tutorial') |>
@@ -109,6 +107,11 @@ cleaned_forage_data_count <- cleaned_forage_data_count |>
     level = as.numeric(str_extract(level, '[0-9]+'))
   )
 
+cleaned_forage_data_count |> 
+  group_by(subject, level) |> 
+  count() |> 
+  pull(level) |> 
+  length()
 
 # add obj ids
 cleaned_forage_data_count <- cleaned_forage_data_count |> 
@@ -124,6 +127,10 @@ cleaned_forage_data_count <- cleaned_forage_data_count |>
 clean_location_data <- location_data |>
   filter(subject %in% subj_to_keep & level != '_tutorial') |>
   mutate(level = as.numeric(str_extract(level, '[0-9]+')))
+
+
+# imputation  -------------------------------------------------------------
+
 
 # loop through subjects and levels, slice and impute
 for (i in 1:length(subj_to_keep)) {

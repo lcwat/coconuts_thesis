@@ -10,7 +10,7 @@ library(brms)
 
 # load data ---------------------------------------------------------------
 
-performance_and_rmi <- read_csv('data/aggregate_data/cleaned_metrics_summary.csv')
+performance_and_rmi <- read_csv('data/clean_datasets/cleaned_metrics_summary.csv')
 
 # clean data --------------------------------------------------------------
 
@@ -33,8 +33,7 @@ for(i in 1:nrow(performance_and_rmi)) {
 
 performance_and_rmi <- performance_and_rmi |> 
   mutate(
-    subject = sub, 
-    level = str_extract(level, '[0-9]+')
+    subject = sub
   )
 
 # factor cats
@@ -44,10 +43,18 @@ performance_and_rmi <- performance_and_rmi |>
     level = factor(level)
   )
 
+# add level order
+performance_and_rmi <- performance_and_rmi |> 
+  group_by(subject) |> 
+  arrange(min_time, .by_group = T) |> 
+  mutate(
+    level_order = 1:length(level)
+  )
+
 # standardize variables
 performance_and_rmi <- performance_and_rmi |> 
   mutate(
-    s_total_time = (total_time - mean(total_time)) / sd(total_time), 
+    s_total_time = (true_time - mean(true_time)) / sd(true_time), 
     s_rmi = (rmi - mean(rmi)) / sd(rmi),
     s_time_in_game = (level_order - mean(level_order)) / sd(level_order)
   )
@@ -59,7 +66,7 @@ summary(performance_and_rmi)
 # generative model --------------------------------------------------------
 
 # depending on specific level and how long player has been playing, their 
-# performance should be affected 
+# performance should improve with time in game and rmi 
 
 # Time to complete <- RMI * Time in game + (RMI * Time in game | Subject) + 
 #   (RMI * Time in game | Level)
@@ -69,13 +76,14 @@ summary(performance_and_rmi)
 # do players improve with more experience in the game? 
 # specifically, do their times to complete decrease and RMI increase as a 
 # function of in game experience?
+
 # does a higher degree of traplining result in better performance?
 
 # prior predictive --------------------------------------------------------
 
 # find what priors need to be defined
 perf_by_time_priors <- get_prior(
-  total_time ~ s_time_in_game * s_rmi + (s_time_in_game * s_rmi | subject) + 
+  s_total_time ~ s_time_in_game * s_rmi + (s_time_in_game * s_rmi | subject) + 
     (s_time_in_game * s_rmi | level), 
   family = Gamma(link = 'log'),
   data = performance_and_rmi
