@@ -51,22 +51,6 @@ coco_locations <- read_csv('data/level_arrangements/all_levels_arrangements.csv'
 forage_data <- read_csv('data/raw_extract/raw/Feb_22_2026_raw_forage_data.csv')
 location_data <- read_csv('data/raw_extract/raw/Feb_22_2026_raw_location_data.csv')
 
-# check level transitions
-transitions <- location_data |>
-  mutate(
-    level_switch = if_else(
-      lag(level, default = '') != level, T, F
-    )
-  ) |> 
-  filter(level_switch)
-
-transitions <- transitions |> 
-  group_by(subject, level) |> 
-  mutate(
-    missed_start = if_else(x != 0 & y != 0, T, F)
-  ) |> 
-  filter(missed_start)
-
 # remove pilot data or test runs of study flow, find real participants with 
 # completed game
 (lvls_encountered <- forage_data |> 

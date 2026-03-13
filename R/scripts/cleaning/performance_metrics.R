@@ -24,7 +24,7 @@ coco_locations <- read_csv('data/level_arrangements/all_levels_arrangements.csv'
 simul_perf_and_rmi <- read_csv('data/simulation/performance/perf_and_rmi_summary.csv')
 
 # created performance file from code below
-# performance_and_rmi <- read_csv('data/aggregate_data/Jan_26_2026_metrics_summary.csv')
+performance_and_rmi <- read_csv('data/aggregate_data/cleaned_metrics_summary.csv')
 
 # source functions --------------------------------------------------------
 
@@ -33,139 +33,115 @@ source('R/scripts/src/entropy.R')
 # get metrics -------------------------------------------------------------
 
 # performance: time and distance
-performance <- location_data |> 
+
+# arrange by time
+arr_ld <- location_data |> 
+  group_by(subject) |> 
+  arrange(time, .by_group = T)
+
+# find max and min time for each level
+arr_ld_summary <- arr_ld |> 
   group_by(subject, level) |> 
-  mutate(
-    # euclid distance between each step
-    step_length = sqrt((x-lag(x, default = 0))^2 + (y-lag(y, default = 0))^2)
-  ) |> 
   summarize(
-    total_time = max(time) - min(time), 
-    total_distance = sum(step_length), 
-    start_time = min(time)
+    min_time = min(time), 
+    max_time = max(time)
+  ) |> 
+  ungroup() |> 
+  group_by(subject) |> 
+  arrange(min_time, .by_group = T)
+
+# get performance, then check for weird levels that start later than expected
+arr_ld_summary <- arr_ld_summary |> 
+  mutate(
+    time_end_2_end = max_time - lag(max_time, default = 0), 
+    time_start_2_end = max_time - min_time,
+    lag_time = min_time - lag(max_time, default = 0)
   )
 
-summary(performance)
+# check out odd times
+arr_ld_summary |> 
+  ggplot(aes(x = true_time)) +
+  geom_histogram(fill = 'grey20', binwidth = 5) +
+  geom_vline(
+    data = arr_ld_summary |> filter(subject == 47601), 
+    aes(xintercept = time_start_2_end), 
+    color = 'peachpuff3'
+  ) +
+  facet_wrap(~level)
 
-# checking ----------------------------------------------------------------
+# for this subject, their level 9 ended abruptly, the following level appears 
+# to have lost some observations as well resulting in an outlier performance
 
-# some players played the game several times, could maybe try to go back in time
+# look at quantiles across participants
+arr_ld_summary <- arr_ld_summary |> 
+  group_by(level) |> 
+  mutate(
+    percentile = percent_rank(true_time)
+  )
+
 forage_data |> 
-  filter(subject == 46926 & level == '_level_1') |> 
+  filter(subject == 47601 & level == 9) |> 
   View()
 
-# some pp played game several times, try to see if can parse apart this interleaved data
-(prob_subject <- forage_data |> 
-   filter(subject == 46926) |> 
-   arrange(level, points))
+location_data |> 
+  filter(subject == 47601 & level == 5) |> 
+  filter(time < min(time) + 10) |> 
+  ggplot(aes(x = x, y = y)) +
+  geom_path(color = 'dodgerblue') +
+  geom_point(
+    data = coco_locations |> filter(level == 5), 
+    aes(size = as.factor(point_value))
+  ) +
+  theme_void()
 
-# going to be really tough, just going to locate these folks and remove
-var_size_levels <- c('_level_2', '_level_3', '_level_4', '_level_6', '_level_7', '_level_8', '_level_9')
-
-# see if there are additional entries on specific levels
-entries <- forage_data |> 
-  group_by(subject) |> 
-  count(level) |> 
+# create col with correct performances
+arr_ld_summary <- arr_ld_summary |> 
   mutate(
-    additional_entries = if_else(
-      level %in% var_size_levels, 
-      n - 200, 
-      n - 350
+    true_time = if_else(
+      min_time == lag_time, time_start_2_end, time_end_2_end
     )
   )
 
-# see if points gained matches object collected
-forage_point_count <- forage_data |> 
-  select(subject, level, point_value, points, time) |> 
-  group_by(subject, level) |> 
-  arrange(time) |> 
+# identify bad levels by seeing if those levels have lag time that indicate 
+# missing observations to start the level and levels that ended prematurely 
+arr_ld_summary <- arr_ld_summary |> 
   mutate(
-    point_discrepancy = lag(point_value, default = 0) - (points - lag(points, default = 0))
-  )
-  
-# collapse across subject and level to see problematic patterns
-discrep <- forage_point_count |> 
-  group_by(subject, level) |> 
-  summarize(
-    total_discrepancy = sum(point_discrepancy)
-  ) |> 
-  filter(total_discrepancy > 50 | total_discrepancy < -50)
-
-# negative discrepancies mean the player earned more points than anticipated
-# positive discrepancies likely indicate additional playthroughs
-performance_and_rmi_clean <- performance_and_rmi |> 
-  anti_join(discrep, join_by(subject, level))
-
-# check out path and collections
-plot_level_path <- function(subject_id, level_string) {
-  level_num = as.numeric(str_extract(level_string, '[0-9]+'))
-  
-  location_data |> 
-    filter(subject == subject_id & level == level_string) |> 
-    ggplot(aes(x = x, y = y)) +
-    geom_path(linewidth = .25, color = 'dodgerblue3') +
-    geom_point(
-      data = coco_locations |> filter(level == level_num),
-      inherit.aes = F, 
-      aes(x = x, y = y, size = as.factor(point_value))
-    ) +
-    geom_point(
-      data = forage_data |> filter(subject == subject_id & level == level_string), 
-      inherit.aes = F,
-      aes(x = x, y = y, size = as.factor(point_value)),
-      color = 'dodgerblue'
-    ) +
-    labs(title = subject_id) +
-    
-    theme_void()
-}
-
-plot_level_path(large_values$subject[3], large_values$level[3])
-
-# try again without problematic players
-location_data_clean <- location_data |> 
-  anti_join(discrep, join_by(subject, level))
-
-performance <- location_data_clean |> 
-  group_by(subject, level) |> 
-  mutate(
-    # euclid distance between each step
-    step_length = sqrt((x-lag(x, default = 0))^2 + (y-lag(y, default = 0))^2)
-  ) |> 
-  summarize(
-    total_time = max(time) - min(time), 
-    total_distance = sum(step_length), 
-    start_time = min(time)
+    bad_level = if_else(
+      lag_time != min_time & lag_time > 2 | true_time < 30, 
+      T, 
+      F
+    )
   )
 
-# arrange by time in level 
-performance <- performance |> 
-  group_by(subject) |> 
-  arrange(subject, start_time) |> 
-  ungroup()
+# filter out bad levels
+arr_ld_summary_clean <- arr_ld_summary |> 
+  filter(!bad_level)
 
-# add level order var
-performance <- performance |> 
-  filter(level != '_tutorial') |> 
-  group_by(subject) |> 
-  mutate(
-    level_order = 1:length(level)
-  ) |> 
-  ungroup()
+nrow(arr_ld_summary)-nrow(arr_ld_summary_clean)
 
-# remove times that are implausible even on easiest levels
-performance <- performance |> 
-  filter(total_time > 50)
+# drops 24 rows
+
+# select only subj and level
+performance <- arr_ld_summary_clean |> 
+  select(subject, level, true_time)
+
+# filter out these bad levels in other dataframes
+forage_data_clean <- forage_data |> 
+  inner_join(performance)
+
+# write to file
+write_csv(forage_data_clean, 'data/clean_datasets/imputed_forage_data.csv')
 
 # rmi ---------------------------------------------------------------------
 
+# redo rmi calc once again! file seems to keep disappearing?
 
 rmis <- tibble(
   subject = numeric(), level = numeric(), rmi = numeric()
 )
 
 # set seed for reproducability
-set.seed(3112026)
+set.seed(3132026)
 
 # length for progress tracker
 len_subj = length(unique(performance$subject))
