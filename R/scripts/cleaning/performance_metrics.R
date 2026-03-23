@@ -227,35 +227,7 @@ write_csv(performance_and_rmi, 'data/clean_datasets/cleaned_metrics_summary.csv'
 
 # plot theme --------------------------------------------------------------
 
-# set colors and font
-clrs <- NatParksPalettes::natparks.pals('Everglades')
-showtext_opts(dpi = 300)
-showtext_auto()
-
-# presentation font
-font_add_google('Roboto')
-
-proposal_theme <- function() {
-  theme_bw() +
-    theme(
-      panel.border = element_blank(), 
-      panel.background = element_blank(), 
-      plot.background = element_blank(), 
-      legend.background = element_blank(),
-      panel.grid = element_blank(), 
-      axis.line = element_line(color = 'grey20', linewidth = .75),
-      axis.ticks = element_line(color = 'grey20', linewidth = .5),
-      text = element_text(family = 'Roboto'),
-      axis.text = element_text(size = 10), 
-      axis.title = element_text(size = 14, face = 'bold'), 
-      legend.text = element_text(size = 10), 
-      legend.title = element_text(size = 14, face = 'bold'),
-      legend.position = 'top', 
-      legend.justification = 'left', 
-      legend.direction = 'horizontal'
-    )
-}
-
+source('R/scripts/src/project_theme.R')
 
 # comparison to simulation ------------------------------------------------
 
@@ -272,7 +244,7 @@ performance_and_rmi |>
   
   facet_wrap(~level) +
   
-  proposal_theme() +
+  project_theme() +
   
   theme(
     strip.background = element_rect(color = NA, fill = 'wheat2'), 
@@ -315,7 +287,7 @@ performance_and_rmi |>
     y = 'game level'
   ) +
   
-  proposal_theme()
+  project_theme()
 
 ggsave(
   'fig_output/participants/performance_analysis/player_to_sim_perf_comparison_ridges.pdf', 
@@ -346,7 +318,7 @@ performance_and_rmi |>
     y = 'game level'
   ) +
   
-  proposal_theme()
+  project_theme()
 
 ggsave(
   'fig_output/participants/performance_analysis/player_to_sim_rmi_comparison_ridges.pdf', 
@@ -359,7 +331,7 @@ performance_and_rmi |>
   geom_line(alpha = .2) +
   geom_smooth(color = 'orange') +
   scale_color_viridis_d(guide = 'none') +
-  proposal_theme()
+  project_theme()
 
 # paths
 plot_paths <- function(lvl = 1) {
@@ -386,7 +358,7 @@ plot_paths <- function(lvl = 1) {
     
     scale_color_viridis_c('Time (s)', option = 'magma', begin = .2, end = .9, direction = -1) +
     
-    proposal_theme() +
+    project_theme() +
     
     theme(
       axis.line = element_blank(), 
@@ -440,7 +412,7 @@ velo_performance <- location_data_clean |>
 velo_performance |> 
   ggplot() +
   geom_point(aes(x = avg_velocity, y = total_time)) +
-  proposal_theme() +
+  project_theme() +
   facet_wrap(~level)
 
 location_data_clean |>
