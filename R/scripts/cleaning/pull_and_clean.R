@@ -20,7 +20,7 @@ library(keyring)
 con <- dbConnect(
   MariaDB(),
   dbname = "psych270_coconuts", 
-  host = "s161.servername.online",
+  host = "sh-cp21.lax2.servername.online",
   port = 3306,
   username = "psych270_data_access", 
   password = key_get("coconuts", "r_user")
