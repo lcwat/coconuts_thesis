@@ -19,8 +19,10 @@ fig_path <- 'fig_output/participants/models/' # set path for fig output
 
 # load data ---------------------------------------------------------------
 
-performance_and_rmi <- read_csv('data/clean_datasets/cleaned_metrics_summary.csv')
+# performance_and_rmi <- read_csv('data/clean_datasets/cleaned_metrics_summary.csv')
 
+performance_and_rmi <- read_csv('data/clean_datasets/agg_summary_data.csv')
+#
 # clean data --------------------------------------------------------------
 
 # create new vector of subject ids
@@ -71,6 +73,9 @@ performance_and_rmi <- performance_and_rmi |>
 # glimpse changes
 glimpse(performance_and_rmi)
 summary(performance_and_rmi)
+
+# save again
+write_csv(performance_and_rmi, 'data/clean_datasets/agg_summary_data.csv')
 
 # generative model --------------------------------------------------------
 
@@ -762,11 +767,14 @@ marginal_f <- predictions(
 )
 
 marginal_f |> 
+  mutate(
+    level_string = fct_reorder(str_c('level ', level), level)
+  ) |> 
   ggplot(aes(x = s_rmi)) +
   
   # points in background
   geom_point(
-    data = performance_and_rmi, 
+    data = performance_and_rmi |> mutate(level_string = fct_reorder(str_c('level ', level), level)), 
     aes(y = true_time), 
     alpha = .4, shape = 1, color = clrs[3]
   ) + 
@@ -793,7 +801,7 @@ marginal_f |>
     axis.text.x = element_text(size = 8, angle = 90)
   ) +
   
-  facet_wrap(~ level)
+  facet_wrap(~ level_string)
 
 ggsave(
   paste0(fig_path, 'b4.1_rmi_marginal_by_level.pdf'), device = 'pdf', 
@@ -814,7 +822,10 @@ marginal_f <- predictions(
 )
 
 marginal_f |> 
-  ggplot(aes(x = s_rmi, y = estimate, color = subject)) +
+  mutate(
+    level_string = fct_reorder(str_c('level ', level), level)
+  ) |> 
+  ggplot(aes(x = s_rmi, y = estimate, color = as.factor(subject))) +
   
   # plot spaghetti
   geom_line(
@@ -832,10 +843,81 @@ marginal_f |>
     axis.text.x = element_text(size = 8, angle = 90)
   ) +
   
-  facet_wrap(~ level)
+  facet_wrap(~ level_string)
 
 ggsave(
   paste0(fig_path, 'b4.1_rmi_spaghetti.pdf'), device = 'pdf', 
   width = 6, height = 6, units = 'in'
 )
   
+
+# marginal effects --------------------------------------------------------
+
+b4.1 <- read_rds('R/fits/b4.1.rds')
+
+# calculate ame of rmi
+
+# marginal slopes of rmi
+avg_slopes(b4.1, variables = 's_rmi') # one unit change at the mean of s_rmi
+
+(rmi_ame <- avg_slopes(
+  b4.1, 
+  newdata = datagrid(
+    level = 1:10, 
+    subject = unique(performance_and_rmi$subject)
+  ), 
+  re_formula = NULL
+))
+
+# one unit (sd) change of rmi at the mean results in a 2.62s (95% C.I. = [0.86, 4.41])
+# improvement in performance after accounting for group differences. 
+
+# one level change in the middle of the game results in a 0.58s (95% C.I. = [-1.03, 2.15])
+# improvement in performance after accounting for group differences. 
+
+# get mean prediction
+(rmi_predictions <- avg_predictions(
+  b4.1
+))
+
+# average time to complete level was 161s (95% C.I. = [160, 163]) after accounting
+# for group differences. 
+
+# get slope changes at different values of srmi
+srmi25 = quantile(performance_and_rmi$s_rmi, .25)
+srmi50 = quantile(performance_and_rmi$s_rmi, .50)
+srmi75 = quantile(performance_and_rmi$s_rmi, .75)
+
+# slope draws
+rmi_slopes <- slopes(
+  b4.1, 
+  newdata = datagrid(
+    s_rmi = 0, 
+    level = 1:10
+  ), 
+  re_formula = ~(s_rmi | level)
+) |> 
+  posterior_draws()
+
+rmi_slopes |> 
+  filter(term == 's_rmi') |> 
+  mutate(
+    level_string = fct_reorder(str_c('level ', level), level)
+  ) |> 
+  ggplot(aes(x = draw)) +
+  stat_halfeye(
+    fill = clrs[2], point_interval = 'median_hdi', .width = c(.8, .95)
+  ) +
+  geom_vline(xintercept = 0, alpha = .7) +
+  labs(
+    x = 'Posterior slope estimate', 
+    y = 'Density'
+  ) +
+  scale_x_continuous(n.breaks = 7) +
+  project_theme() +
+  facet_wrap(~level_string)
+
+ggsave(
+  paste0(fig_path, 'b4.1_post_slope_level.pdf'), device = 'pdf', width = 8, height = 6, 
+  units = 'in'
+)
