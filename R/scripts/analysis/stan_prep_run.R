@@ -1,4 +1,18 @@
+# prep and run stan models
+# Lucas Watson
+# code adapted and refactored from Dominik Deffner (2023)
+
+
+# load libraries ----------------------------------------------------------
+
 library(tidyverse)
+library(cmdstanr)
+library(posterior)
+library(tidybayes)
+library(bayesplot)
+library(loo)
+
+# funs --------------------------------------------------------------------
 
 # standardize variables and add metadata
 standardize <- function(x) {
@@ -32,17 +46,13 @@ files <- tibble(
 # sample subjects
 set.seed(888)
 
-subset <- sample(subjs, round(length(subjs)*.8, 0))
-subset = c(46986)
+subset <- sample(subjs, round(length(subjs)*.5, 0))
+# subset = c(46986)
 
 # filter files
 files <- files |> 
   filter(subject %in% subset) |> 
   pull(file_name)
-
-# source funs -------------------------------------------------------------
-
-source('R/scripts/analysis/make_stan_data_fun.R')
 
 # make stan data ----------------------------------------------------------
 
@@ -134,7 +144,18 @@ for (file in files) {
   coconut_clst <- rbind(coconut_clst, coconut_clst_temp)
   coconut_pv <- rbind(coconut_pv, coconut_pv_temp)
   
-  cat('Completed ', which(files == file), ' files of ', length(files))
+  print('Completed ', which(files == file), ' files of ', length(files))
+}
+
+# refactor subject id
+N <- length(subject_id)
+id <- c()
+id[1] <- 1
+
+counter <- 1
+for (i in 2:N) {
+  if ((subject_id[i] != subject_id[i-1])) counter <- counter + 1
+  id[i] <- counter
 }
 
 # compile data into a list for stan
@@ -144,11 +165,115 @@ dat <- list(
   C = C,
   N_subjects = length(unique(subject_id)), 
   N_levels = length(unique(level)),
-  subject_id = subject_id,
+  subject_id = id,
   level = level,
   collection_number = collection_number,
   choice = choice
 )
+
+# nn model ----------------------------------------------------------------
+
+# add feature matrices
+dat$N_feat = 2
+dat$Feature_matrix = array(NA, dim=c(dat$N, dat$N_coconut, dat$N_feat))
+
+dat$Feature_matrix[,,1] = coconut_dist
+dat$Feature_matrix[,,2] = coconut_pv
+
+# remove large objects from environment
+rm(coconut_clst, coconut_dist, coconut_ta, coconut_pv)
+
+# standardize features within collections, ignore pv 
+for (i in 1:dat$N) {
+  for (j in c(1:dat$N_feat)) {
+    
+    # check if level is level with no point value variation
+    if(dat$level[i] %in% c(1, 5, 10) & j == 2) { # change index to align with pv matrix
+      dat$Feature_matrix[i,1:dat$C[i],j] <- 0
+    }
+    else {
+      dat$Feature_matrix[i,1:dat$C[i],j] <- standardize(dat$Feature_matrix[i,1:dat$C[i],j])
+    }
+  }
+}
+
+# compile model
+m_parallel <- cmdstan_model(
+  "R/scripts/analysis/stan/full_model.stan", cpp_options = list(stan_threads = TRUE)
+)
+nn_model_fit <- m_parallel$sample(
+  dat, chains = 2, parallel_chains = 2, threads_per_chain = 35, 
+  refresh = 50, iter_warmup = 750, adapt_delta = 0.99, iter_sampling = 1500, 
+  output_dir = 'R/fits/cmdstan_output_files', 
+  output_basename = 'nn_model', 
+  seed = 888
+)
+
+files <- list.files('R/fits/cmdstan_output_files', full.names = T)
+
+# get model output files
+nn_model_fit <- as_cmdstan_fit(files)
+
+# see diagnostics
+nn_model_fit$diagnostic_summary()
+
+draws <- nn_model_fit$draws(format = 'df')
+
+
+
+# ta model ----------------------------------------------------------------
+
+# add feature matrices
+dat$N_feat = 2
+dat$Feature_matrix = array(NA, dim=c(dat$N, dat$N_coconut, dat$N_feat))
+
+dat$Feature_matrix[,,1] = coconut_ta
+dat$Feature_matrix[,,2] = coconut_pv
+
+# remove large objects from environment
+rm(coconut_clst, coconut_dist, coconut_ta, coconut_pv)
+
+# standardize features within collections, ignore pv 
+for (i in 1:dat$N) {
+  for (j in c(1:dat$N_feat)) {
+    
+    # check if level is level with no point value variation
+    if(dat$level[i] %in% c(1, 5, 10) & j == 2) { # change index to align with pv matrix
+      dat$Feature_matrix[i,1:dat$C[i],j] <- 0
+    }
+    else {
+      dat$Feature_matrix[i,1:dat$C[i],j] <- standardize(dat$Feature_matrix[i,1:dat$C[i],j])
+    }
+  }
+}
+
+# save object
+write_rds(dat, 'data/stan_data/ta_model_data.rds')
+
+dat <- read_rds('data/stan_data/ta_model_data.rds')
+
+# compile model
+m_parallel <- cmdstan_model(
+  "R/scripts/analysis/stan/full_model.stan", cpp_options = list(stan_threads = TRUE)
+)
+ta_model_fit <- m_parallel$sample(
+  dat, chains = 2, parallel_chains = 2, threads_per_chain = 35, 
+  refresh = 50, iter_warmup = 750, adapt_delta = 0.99, iter_sampling = 1500, 
+  output_dir = 'R/fits/cmdstan_output_files', 
+  output_basename = 'ta_model', 
+  seed = 888
+)
+
+files <- list.files('R/fits/cmdstan_output_files', full.names = T)
+
+# get model output files
+nn_model_fit <- as_cmdstan_fit(files)
+
+# see diagnostics
+nn_model_fit$diagnostic_summary()
+
+draws <- nn_model_fit$draws(format = 'df')
+# full model --------------------------------------------------------------
 
 # add feature matrices
 dat$N_feat = 4
@@ -159,14 +284,19 @@ dat$Feature_matrix[,,2] = coconut_ta
 dat$Feature_matrix[,,3] = coconut_clst
 dat$Feature_matrix[,,4] = coconut_pv
 
-# standardize predictors within collections
-for (i in c(1,dat$N_feat)) {
-  for (j in 1:dat$N) {
-    dat$Feature_matrix[j,1:dat$C[j],i] <- standardize(dat$Feature_matrix[j,1:dat$C[j],i])
+# standardize features within collections, ignore pv 
+for (i in 1:dat$N) {
+  for (j in c(1:dat$N_feat)) {
+    
+    # check if level is level with no point value variation
+    if(dat$level[i] %in% c(1, 5, 10) & j == 4) {
+      next()
+    }
+    else {
+      dat$Feature_matrix[i,1:dat$C[i],j] <- standardize(dat$Feature_matrix[i,1:dat$C[i],j])
+    }
   }
 }
-
-# model -------------------------------------------------------------------
 
 # compile model
 m_parallel <- cmdstan_model(
@@ -176,7 +306,47 @@ fit_full_model <- m_parallel$sample(
   dat, chains = 2, parallel_chains = 2, threads_per_chain = 35, 
   refresh = 1, iter_warmup = 1500, adapt_delta = 0.99, iter_sampling = 2500
 )
-stanfit <- rstan::read_stan_csv(
-  fit_parallel_group_asocial$output_files()
+# took 7 hours, but the sampling did 4000 burn in and 4000 samples 
+
+# save
+fit_full_model$save_object('R/fits/initial_full_model.rds')
+
+# view posterior summary
+posterior_summary <- fit_full_model$summary()
+
+fit_full_model$diagnostic_summary()
+
+# draws
+draws <- fit_full_model$draws()
+
+# draws to df
+post <- as_draws_df(draws)
+
+# check out posteriors for weights
+post |> 
+  select(starts_with('weights')) |> 
+  set_names(str_c("beta[", c("Distance", "`Turning Angle`", "Clustering", "`Point Value`"), "]")) |>
+  pivot_longer(everything()) |> 
+  ggplot(aes(x = value, y = name)) +
+  stat_halfeye(fill = 'goldenrod') + 
+  geom_vline(xintercept = 0, alpha = .5) +
+  scale_y_discrete(labels = ggplot2:::parse_safe) +
+  labs(y = 'parameter') +
+  project_theme()
+
+# waic
+log_lik_draws <- fit_full_model$draws('log_lik')
+
+loo(log_lik_draws)
+
+
+# nn model ----------------------------------------------------------------
+
+# compile model
+m_parallel <- cmdstan_model(
+  "R/scripts/analysis/stan/full_model.stan", cpp_options = list(stan_threads = TRUE)
 )
-s_full_model <- extract.samples(stanfit)
+fit_full_model <- m_parallel$sample(
+  dat, chains = 2, parallel_chains = 2, threads_per_chain = 35, 
+  refresh = 1, iter_warmup = 1500, adapt_delta = 0.99, iter_sampling = 2500
+)

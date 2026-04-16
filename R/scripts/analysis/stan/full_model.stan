@@ -6,13 +6,13 @@
 // functions block: Here we define the partial sum function for parallel computation of the likelihood.
 functions {
 
-real partial_sum(int[] y_slice, // important! uses only the slice from start to end for that collection number
+real partial_sum(array[] int y_slice, // important! uses only the slice from start to end for that collection number
                    int start, int end, // indices of start/end
                    int N_feat,
-                   int[] C, // number of available coconuts
-                   int[] subject_id, // subject id
-                   int[] level, // level id
-                   int[] collection_number, // collection id
+                   array[] int C, // number of available coconuts
+                   array[] int subject_id, // subject id
+                   array[] int level, // level id
+                   array[] int collection_number, // collection id
                    array[,,] real Feature_matrix, matrix weights, matrix v_subject , matrix v_level) {
 
       real logp=0;
@@ -29,7 +29,7 @@ for(i in start:end){
   matrix[C[i] , N_feat] features = to_matrix(Feature_matrix[i,1:C[i],]) ;
   
   // compute choice probabilities using softmax function
-  p = softmax(features * (weights + v_subject[subject_id[i],]' + v_level[level[i],]' ) );
+  p = softmax(features * (weights[ , 1] + v_subject[subject_id[i],]' + v_level[level[i],]' ) );
 
   // add log probability of observed block choice to target
   logp += categorical_lpmf(y_slice[counter] | p);
@@ -47,17 +47,17 @@ data{
    int N_levels;       // number of levels
    int N_coconut;      // number of coconuts
    int N_feat;         // number of features
-   int C[N];           // number of available blocks for each choice
-   int subject_id[N];  // unique individual identification
-   int level[N];       // level id
-   int collection_number[N]; // collection number in level
-   int choice[N];        // chosen coconut
-   real Feature_matrix[N,N_coconut,N_feat]; // feature design matrix for each of N choices, 1 distance, 2 turning angle, 3 clustering, 4 point value
+   array[N] int C;           // number of available blocks for each choice
+   array[N] int subject_id;  // unique individual identification
+   array[N] int level;       // level id
+   array[N] int collection_number; // collection number in level
+   array[N] int choice;        // chosen coconut
+   array[N,N_coconut,N_feat] real Feature_matrix; // feature design matrix for each of N choices, 1 distance, 2 turning angle, 3 clustering, 4 point value
 }
 
 // parameter block: define and name the size of each unobserved variable.
 parameters{
-   vector[N_feat] weights;
+   matrix[N_feat,1] weights;
 
    // Varying effects clustered on individual
     matrix[N_feat,N_subjects] z_subject;
@@ -87,7 +87,7 @@ int grainsize = 1;
   // priors
   
   // weights
-  weights ~ normal(0,3); // weakly informed
+  to_vector(weights) ~ normal(0,3); // weakly informed
 
   // varying effects priors
   to_vector(z_subject) ~ normal(0,1); 
@@ -122,7 +122,7 @@ generated quantities {
   matrix[C[i] , N_feat] features = to_matrix(Feature_matrix[i,1:C[i],]) ;
   
   // compute choice probabilities using softmax function
-  p = softmax(features * (weights + v_subject[subject_id[i],]' + v_level[level[i],]' ) );
+  p = softmax(features * (weights[ , 1] + v_subject[subject_id[i],]' + v_level[level[i],]' ) );
 
 
   //Compute log likelihood of observed choice

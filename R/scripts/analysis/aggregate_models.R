@@ -96,7 +96,7 @@ write_csv(performance_and_rmi, 'data/clean_datasets/agg_summary_data.csv')
 
 # varying level intercept -------------------------------------------------
 
-# start with the simplest instatiation of the model, vary mean performance 
+# start with the simplest instantiation of the model, vary mean performance 
 # estimates by the level id
 
 # look at the raw mean estimates for each level

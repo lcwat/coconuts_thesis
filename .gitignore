@@ -1,5 +1,8 @@
 # folder with large files that shouldn't be pushed, only zip form
 data/raw_extract
+data/stan_data
+R/fits/cmdstan_output_files
+R/fits/initial_full_model.rds
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
