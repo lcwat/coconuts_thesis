@@ -46,13 +46,15 @@ files <- tibble(
 # sample subjects
 set.seed(888)
 
-subset <- sample(subjs, round(length(subjs)*.5, 0))
+subset <- sample(subjs, round(length(subjs)*.4, 0))
 # subset = c(46986)
 
 # filter files
 files <- files |> 
-  filter(subject %in% subset) |> 
-  pull(file_name)
+  filter(subject %in% subset)
+
+# save
+write_csv(files, 'data/clean_datasets/file_names.csv')
 
 # make stan data ----------------------------------------------------------
 

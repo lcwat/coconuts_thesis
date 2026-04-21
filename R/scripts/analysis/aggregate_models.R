@@ -16,12 +16,21 @@ library(marginaleffects)
 source('R/scripts/src/project_theme.R')
 fig_path <- 'fig_output/participants/models/' # set path for fig output
 
+# set opts
+options("marginaleffects_posterior_interval" = "hdi")
+options("marginaleffects_posterior_center" = "mean")
+
 
 # load data ---------------------------------------------------------------
 
 # performance_and_rmi <- read_csv('data/clean_datasets/cleaned_metrics_summary.csv')
 
 performance_and_rmi <- read_csv('data/clean_datasets/agg_summary_data.csv')
+
+performance_and_rmi <- performance_and_rmi |> 
+  mutate(
+    level_string = fct_reorder(factor(str_c('level ', level)), level)
+  )
 #
 # clean data --------------------------------------------------------------
 
@@ -552,7 +561,7 @@ f |>
 # posterior predictive check 
 # posterior predict adds variance from shape and sigma[pars] and can be used
 # to generate model derived data to compare to actual observed data
-yrep <- posterior_predict(b3.1, ndraws = 500)
+yrep <- posterior_predict(b4.1, ndraws = 500)
 
 # ppc 
 ppc_dens_overlay(performance_and_rmi$true_time, yrep[1:100,]) +
@@ -646,6 +655,13 @@ b4.1 <- brm(
 
 print(b4.1)
 
+# parameter summaries
+as_draws_df(b4.1) |> 
+  select(starts_with('b_')) |> 
+  pivot_longer(everything()) |> 
+  group_by(name) |> 
+  mean_hdi()
+
 b4.1$prior
 
 # rmi still appears to improve performance even after conditioning on time in game
@@ -654,21 +670,23 @@ b4.1$prior
 # compare fixed estimates
 as_draws_df(b4.1) |> 
   select(starts_with('b_s')) |> 
-  set_names(str_c("beta[", c("RMI", "Time", "`RMI x Time`"), "]")) |> 
+  set_names(str_c("b[", c("RMI", "Time", "`RMI x Time`"), "]")) |> 
   pivot_longer(everything()) |> 
   
   # plot
   ggplot(
     aes(x = value, y = fct_reorder(name, value))
   ) +
-  stat_halfeye(fill = clrs[3]) +
+  stat_halfeye(
+    fill = clrs[3], point_interval = 'mean_hdi'
+  ) +
   geom_vline(xintercept = 0, alpha = .5) +
   scale_y_discrete(labels = ggplot2:::parse_safe) +
   labs(y = 'parameter') +
   project_theme()
 
 ggsave(
-  paste0(fig_path, 'b4.1_beta_slabs.pdf'), device = 'pdf', 
+  paste0(fig_path, 'b4.1_beta_slabs.png'), device = 'png', 
   width = 6, height = 5, units = 'in'
 )
 
@@ -748,8 +766,8 @@ marginal_f |>
   project_theme()
 
 ggsave(
-  paste0(fig_path, 'b4.1_grand_rmi_marginal.pdf'), device = 'pdf', 
-  width = 6, height = 6, units = 'in'
+  paste0(fig_path, 'b4.1_grand_rmi_marginal.png'), device = 'png', 
+  width = 6, height = 5, units = 'in'
 )
 
 # a lot of the variance is captured and held in the random effects, need to 
@@ -791,22 +809,29 @@ marginal_f |>
     color = clrs[2]
   ) +
   
-  scale_x_continuous(n.breaks = 10, labels = seq(0, 1, .1)) +
+  scale_x_continuous(n.breaks = 5, labels = seq(0, 1, .2)) +
   
   labs(x = 'RMI', y = 'Time (s)', caption = 'Ribbons represent 95% C.I.') +
   
   project_theme() +
   
   theme(
-    axis.text.x = element_text(size = 8, angle = 90)
+    axis.text.x = element_text(size = 8, angle = 25)
   ) +
   
   facet_wrap(~ level_string)
 
 ggsave(
-  paste0(fig_path, 'b4.1_rmi_marginal_by_level.pdf'), device = 'pdf', 
+  paste0(fig_path, 'b4.1_rmi_marginal_by_level.png'), device = 'png', 
   width = 6, height = 6, units = 'in'
 )
+
+performance_and_rmi |> 
+  ggplot(aes(x = rmi)) +
+  geom_density(fill = clrs[4]) +
+  geom_vline(aes(xintercept = mean(rmi)), linetype = 3) +
+  project_theme() +
+  facet_wrap(~level)
 
 # now subject spaghetti
 marginal_f <- predictions(
@@ -892,7 +917,6 @@ srmi75 = quantile(performance_and_rmi$s_rmi, .75)
 rmi_slopes <- slopes(
   b4.1, 
   newdata = datagrid(
-    s_rmi = 0, 
     level = 1:10
   ), 
   re_formula = ~(s_rmi | level)
@@ -921,3 +945,338 @@ ggsave(
   paste0(fig_path, 'b4.1_post_slope_level.pdf'), device = 'pdf', width = 8, height = 6, 
   units = 'in'
 )
+
+
+# model comparison --------------------------------------------------------
+
+# get model fits
+b3.1 <- read_rds('R/fits/b3.1.rds')
+b4.1 <- read_rds('R/fits/b4.1.rds')
+
+# add loo
+b3.1 <- add_criterion(b3.1, 'loo')
+b4.1 <- add_criterion(b4.1, 'loo')
+
+# compare 
+(loo_modelcomp <- loo_compare(b3.1, b4.1, criterion = 'loo'))
+
+# 3rd model without level order and ixn fits better, which makes sense given that
+# experience in game didn't appear to affect performance 
+
+# rmi models --------------------------------------------------------------
+
+# see how rmi varies by in-game experience
+performance_and_rmi |> 
+  ggplot(aes(x = level_order, y = rmi)) +
+  geom_point(shape = 1, color = clrs[5]) +
+  geom_smooth(color = clrs[4], method = 'lm', se = F) +
+  project_theme() +
+  facet_wrap(~level)
+
+# use beta distribution
+get_prior(
+  data = performance_and_rmi, 
+  formula = rmi ~ 1 + level_order + (level_order | subject) + (level_order | level), 
+  family = beta_binomial()
+) |> 
+  View()
+
+b_r.2 <- brm(
+  data = performance_and_rmi, 
+  formula = bf(
+    rmi ~ 1 + s_time_in_game + (s_time_in_game | subject) + (s_time_in_game | level), 
+    phi ~ 1 + s_time_in_game + (s_time_in_game | subject) + (s_time_in_game | level)
+  ), 
+  prior = c(
+    prior(normal(.5, .3), class = 'Intercept'),
+    prior(normal(0, 3), class = 'b'), 
+    prior(exponential(1), class = 'sd')
+  ), 
+  family = Beta(), 
+  chains = 4, iter = 4000, warmup = 2000, cores = 4, 
+  control = list(adapt_delta = .95), # avoid divergence
+  sample_prior = T,
+  backend = 'cmdstanr',
+  seed = 888, 
+  file = 'R/fits/b_r.2'
+)
+
+print(b_r.2)
+
+# summary
+as_draws_df(b_r.2) |> 
+  select(starts_with('b_')) |> 
+  pivot_longer(everything()) |> 
+  group_by(name) |> 
+  mean_hdi()
+
+avg_slopes(
+  b_r.2, 
+  newdata = datagrid(
+    level = 1:10, 
+    subject = unique(performance_and_rmi$subject)
+  ), 
+  re_formula = NULL
+)
+
+(level_slopes <- slopes(
+  b_r.2, 
+  newdata = datagrid(
+    level = 1:10
+  ), 
+  re_formula = ~(s_time_in_game | level)
+))
+
+subj_slopes <- slopes(
+  b_r.2, 
+  newdata = datagrid(
+    subject = unique(performance_and_rmi$subject)
+  ), 
+  re_formula = ~(s_time_in_game | subject)
+)
+
+subj_slopes |> 
+  arrange(desc(estimate)) |> 
+  View()
+
+# good convergence
+
+# ppc
+yrep <- posterior_predict(b_r.2, ndraws = 1000)
+
+# ppc 
+ppc_dens_overlay(performance_and_rmi$rmi, yrep[sample(1:1000, 100),]) +
+  scale_color_manual('', values = c(clrs[5], '#bedded')) +
+  ylab('density') +
+  scale_x_continuous('rmi', breaks = seq(0, 1, .2), limits = c(0, 1)) +
+  project_theme()
+
+ggsave(
+  'fig_output/participants/models/br.2_ppc_overall.png', device = 'png', 
+  width = 6, height = 4, units = 'in'
+)
+
+# try by level
+ppc_dens_overlay_grouped(
+  performance_and_rmi$rmi, yrep[sample(1:1000, 50),], group = performance_and_rmi$level_string
+) + 
+  scale_color_manual('', values = c(clrs[5], '#bedded')) +
+  ylab('density') +
+  scale_x_continuous('rmi', breaks = seq(0, 1, .2), limits = c(0, 1)) +
+  project_theme() +
+  theme(
+    axis.text.x = element_text(size = 8, angle = 25)
+  )
+
+ggsave(
+  'fig_output/participants/models/br.2_ppc_levels.png', device = 'png', 
+  width = 6, height = 6, units = 'in'
+)
+
+# get coef draws in long form
+b_r.2 |> 
+  as_draws_df() |> 
+  select(starts_with('b_')) |> 
+  set_names(
+    str_c(
+      "b[", 
+      c('Intercept', 'phi[Intercept]', '`Time in game`', 'phi[`Time in game`]'),
+      "]")
+  ) |> 
+  pivot_longer(everything()) |>
+  mutate(
+    par = if_else(
+      str_detect(name, 'phi'), 'precision', 'mean'
+    )
+  ) |> 
+  
+  ggplot(aes(x = value, y = name)) +
+  
+  stat_halfeye(fill = clrs[5], size = 1.5) +
+  
+  geom_vline(xintercept = 0, linetype = 3) +
+  
+  scale_y_discrete('parameter', labels = ggplot2:::parse_safe) +
+  
+  project_theme() +
+  
+  facet_wrap(~par, scales = 'free')
+
+ggsave(
+  paste0(fig_path, 'br.2_beta_slabs.png'), device = 'png', 
+  width = 6, height = 3, units = 'in'
+)
+
+b_r.2 |> 
+  as_draws_df() |> 
+  select(starts_with('sd_')) |> 
+  set_names(
+    str_c(
+      "sd[", 
+      c(
+        'level[intercept]', 'level[`time in game`]', 
+        'subject[intercept]', 'subject[`time in game`]',
+        'phi[level[intercept]]', 'phi[level[`time in game`]]',
+        'phi[subject[intercept]]', 'phi[subject[`time in game`]]'
+      ),
+      "]"
+    )
+  ) |> 
+  pivot_longer(everything()) |>
+  mutate(
+    par = if_else(
+      str_detect(name, 'phi'), 'precision', 'mean'
+    )
+  ) |> 
+  
+  ggplot(aes(x = value, y = name)) +
+  
+  stat_halfeye(fill = clrs[5], size = 1.5) +
+  
+  geom_vline(xintercept = 0, linetype = 3) +
+  
+  scale_y_discrete('parameter', labels = ggplot2:::parse_safe) +
+  
+  project_theme() +
+  
+  facet_wrap(~par, scales = 'free')
+
+ggsave(
+  paste0(fig_path, 'br.2_variance_slabs.png'), device = 'png', 
+  width = 6, height = 3, units = 'in'
+)
+
+# what does this positive mean (time in game) coef mean?
+# me
+marginal_f <- predictions(
+  b_r.2, 
+  newdata = datagrid(
+    s_time_in_game = scale(1:10)[,1]
+  ),
+  re_formula = NA
+)
+
+# collapse across subj and level
+marginal_f |>
+  ggplot(aes(x = s_time_in_game)) +
+  
+  # data in background
+  geom_point(
+    data = performance_and_rmi, 
+    aes(y = rmi), 
+    alpha = .4, shape = 1, color = clrs[5]
+  ) +
+  
+  # ribbon
+  geom_ribbon(
+    aes(ymin = conf.low, ymax = conf.high), 
+    alpha = .4, fill = clrs[4]
+  ) +
+  
+  # means
+  geom_line(
+    aes(y = estimate), 
+    color = clrs[4], linewidth = 1
+  ) +
+  
+  scale_x_continuous(breaks = scale(1:10)[,1], labels = seq(1, 10, 1)) +
+  
+  labs(x = 'Time in game (level)', y = 'RMI') +
+  
+  project_theme()
+
+ggsave(
+  paste0(fig_path, 'br.2_conditional_overall.png'), device = 'png', 
+  width = 6, height = 4, units = 'in'
+)
+
+# now by level
+marginal_f <- predictions(
+  b_r.2, 
+  newdata = datagrid(
+    s_time_in_game = scale(1:10)[,1], 
+    level = 1:10
+  ),
+  re_formula = ~(s_time_in_game | level)
+)
+
+# plot
+marginal_f |>
+  mutate(
+    level_string = fct_reorder(factor(str_c('level ', level)), level)
+  ) |> 
+  ggplot(aes(x = s_time_in_game)) +
+  
+  # data in background
+  geom_point(
+    data = performance_and_rmi, 
+    aes(y = rmi), 
+    alpha = .4, shape = 1, color = clrs[5]
+  ) +
+  
+  # ribbon
+  geom_ribbon(
+    aes(ymin = conf.low, ymax = conf.high), 
+    alpha = .4, fill = clrs[4]
+  ) +
+  
+  # means
+  geom_line(
+    aes(y = estimate), 
+    color = clrs[4], linewidth = 1
+  ) +
+  
+  scale_x_continuous(breaks = scale(1:10)[,1], labels = seq(1, 10, 1)) +
+  
+  labs(x = 'Time in game (level)', y = 'RMI') +
+  
+  project_theme() +
+  
+  theme(
+    axis.text.x = element_text(size = 8, angle = 25)
+  ) +
+  
+  facet_wrap(~level_string)
+
+ggsave(
+  paste0(fig_path, 'br.2_conditional_by_level.png'), device = 'png', 
+  width = 6, height = 6, units = 'in'
+)
+
+# mean differences in rmi across levels
+conditional_f <- predictions(
+  b_r.2, 
+  newdata = datagrid(
+    level = 1:10
+  ), 
+  re_formula = ~(1 | level)
+)
+
+conditional_f |> 
+  ggplot(aes(x = factor(level))) + 
+  
+  geom_col(aes(y = estimate), fill = clrs[5]) + 
+  
+  geom_point(
+    data = performance_and_rmi, 
+    aes(x = level, y = rmi), 
+    position = position_jitterdodge(.2), 
+    shape = 1, 
+    color = clrs[4], 
+    alpha = .3
+  ) +
+  
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = .1) + 
+  
+  labs(
+    x = 'level', 
+    y = 'RMI'
+  ) +
+  
+  project_theme()
+
+ggsave(
+  paste0(fig_path, 'br.2_mean_rmi_by_level.png'), device = 'png', 
+  width = 6, height = 4, units = 'in'
+)
+
