@@ -1,18 +1,16 @@
 #!/bin/bash
-#SBATCH --job-name=nn_model
+#SBATCH --job-name=nn-sampling
 #SBATCH --output=output_%j.txt
-#SBATCH --error_%j.txt
-#SBATCH --time=02-12:00:00
-#SBATCH --nodes=2
-#SBATCH --ntasks_per_node=8
-#SBATCH --mem-per-core=1G
+#SBATCH --error=error_%j.txt
+#SBATCH --time=01-12:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=10G
 
 # reset and load R for work
 module reset
 module load R
-
-# first create the data
-R --no-save -q < data_prep.R
 
 # now fit the model
 R --no-save -q < nn_sample.R
