@@ -653,6 +653,8 @@ b4.1 <- brm(
   file = 'R/fits/b4.1'
 )
 
+b4.1 <- read_rds('R/fits/b4.1.rds')
+
 print(b4.1)
 
 # parameter summaries

@@ -23,39 +23,6 @@ standardize <- function(x) {
   return(z)
 }
 
-# load data ---------------------------------------------------------------
-
-# get subject list
-subjs <- read_csv('data/clean_datasets/cleaned_metrics_summary.csv') |> pull(subject) |> unique()
-
-# data are in separate files, need to be concatenated before putting into model
-file_list <- list.files('data/participant_expansion/')
-
-# should subset these files and hold some back, could hold back levels or hold
-# back subjects, or both
-
-# subset files by a fraction of the subjects
-files <- tibble(
-  file_no = 1:length(file_list), 
-  file_name = file_list
-) |> 
-  mutate(
-    subject = str_extract(file_name, '\\d+')
-  )
-
-# sample subjects
-set.seed(888)
-
-subset <- sample(subjs, round(length(subjs)*.4, 0))
-# subset = c(46986)
-
-# filter files
-files <- files |> 
-  filter(subject %in% subset)
-
-# save
-write_csv(files, 'data/clean_datasets/file_names.csv')
-
 # make stan data ----------------------------------------------------------
 
 # so their data look very similar, just instead of removing obj that were collected, 
