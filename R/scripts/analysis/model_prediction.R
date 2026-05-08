@@ -7,13 +7,13 @@ library(tidybayes)
 
 # load data ---------------------------------------------------------------
 
-nn_ta_clst_draws <- read_csv('homes/lcwatson/R/coconuts_thesis/cmdstan_output/nn_ta_clst_draws.csv')
+nn_ta_clst_draws <- read_csv('R/cmdstan_output/nn_ta_clst_draws.csv')
 
 # get held back data
-files_used <- read_csv('homes/lcwatson/R/coconuts_thesis/data/file_names.csv')
+files_used <- read_csv('data/clean_datasets/file_names.csv')
 
 full_file_list <- tibble(
-  file_name = list.files('homes/lcwatson/R/coconuts_thesis/data/participant_expansion/')
+  file_name = list.files('data/participant_expansion/')
 ) |> 
   mutate(
     file_no = 1:length(file_name),
@@ -81,7 +81,7 @@ draw_weights <- function(p = numeric(), l = numeric(), n = 100, d = pars_clean) 
 # # scratchpad
 # holdout_files$file_name[1]
 # 
-# f <- read_csv(paste0('data/participant_expansion/', holdout_files$file_name[1]), show_col_types = F)
+f <- read_csv(paste0('data/participant_expansion/', holdout_files$file_name[6]), show_col_types = F)
 # 
 # 1:max(f$collection_num)
 # 
@@ -149,7 +149,7 @@ for (i in 1:nrow(holdout_files)) {
   
   # load file
   f = read_csv(
-    paste0('homes/lcwatson/R/coconuts_thesis/data/participant_expansion/', holdout_files$file_name[i]),
+    paste0('data/participant_expansion/', holdout_files$file_name[i]),
     show_col_types = F
   )
   
@@ -208,13 +208,18 @@ for (i in 1:nrow(holdout_files)) {
       
       # check if prediction is correct
       correct = correct + fs$used[which(fs$prediction == 1)]
+      
+      # fix weird double assignment issue
+      if (length(correct > 1)) {
+        correct = correct[1]
+      }
     }
     
     prop_correct = correct / n_choices
     
     prediction_accuracy = c(prediction_accuracy, prop_correct)
     
-    # print(j)
+    print(j)
   }
   
   # add result to tibble
@@ -229,5 +234,27 @@ for (i in 1:nrow(holdout_files)) {
 
 # 4. calculate prediction accuracy ----------------------------------------
 
+acc_summary <- all_files_results |> 
+  group_by(file_name) |> 
+  summarize(
+    mean = mean(prediction_accuracy)
+  )
+
+# get levels 
+all_files_results_clean <- all_files_results |> 
+  mutate(
+    level = str_extract(file_name, '(?<=lvl_)\\d+')
+  )
+
+# plot
+all_files_results_clean |> 
+  ggplot(aes(x = prediction_accuracy)) + 
+  
+  geom_density(fill = 'goldenrod') + 
+  
+  theme_bw() + 
+  
+  facet_wrap(~level)
+
 # save
-write_csv('homes/lcwatson/R/coconuts_thesis/data/prediction_output.csv')
+write_csv(all_files_results, 'data/clean_datasets/prediction_output.csv')
