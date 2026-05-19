@@ -5,7 +5,17 @@
 library(tidyverse)
 library(tidybayes)
 
+# source theme
+source('R/scripts/src/project_theme.R')
+
 # load data ---------------------------------------------------------------
+
+# pull final file
+p_summary <- read_csv('data/clean_datasets/prediction_output.csv')
+
+# or look through how prediction was performed
+
+# 0. prep files -----------------------------------------------------------
 
 nn_ta_clst_draws <- read_csv('R/cmdstan_output/nn_ta_clst_draws.csv')
 
@@ -231,30 +241,66 @@ for (i in 1:nrow(holdout_files)) {
   print(paste('Completed', i, 'runs of', nrow(holdout_files)))
 }
 
+# save
+write_csv(all_files_results, 'data/clean_datasets/prediction_output.csv')
 
 # 4. calculate prediction accuracy ----------------------------------------
 
-acc_summary <- all_files_results |> 
-  group_by(file_name) |> 
-  summarize(
-    mean = mean(prediction_accuracy)
-  )
-
-# get levels 
-all_files_results_clean <- all_files_results |> 
+# get levels from file name
+p_summary_clean <- p_summary |> 
   mutate(
     level = str_extract(file_name, '(?<=lvl_)\\d+')
   )
 
 # plot
-all_files_results_clean |> 
+p <- p_summary_clean |> 
+  mutate(
+    level_string = paste('level', level)
+  ) |> 
+  mutate(
+    level_string = fct_reorder(factor(level_string), as.numeric(level))
+  ) |> 
+  group_by(level_string) |> 
+  mutate(
+    mean_lvl = mean(prediction_accuracy)
+  ) |> 
+  ungroup() |> 
   ggplot(aes(x = prediction_accuracy)) + 
   
-  geom_density(fill = 'goldenrod') + 
+  geom_density(fill = clrs[1]) + 
   
-  theme_bw() + 
+  geom_vline(aes(xintercept = mean_lvl), linetype = 3) + 
   
-  facet_wrap(~level)
+  project_theme() + 
+  
+  scale_x_continuous('Prediction accuracy', limits = c(0, 1)) +
+  
+  facet_wrap(~level_string) + 
+  
+  theme(
+    axis.text.x = element_text(size = 8, angle = 25)
+  )
 
-# save
-write_csv(all_files_results, 'data/clean_datasets/prediction_output.csv')
+ggsave(
+  'fig_output/participants/cog_models/prediction_acc_by_level.png', plot = p, 
+  device = 'png', width = 8, height = 6, units = 'in'
+)
+
+p_summary_clean |> 
+  group_by(level) |> 
+  summarize(
+    mean = mean(prediction_accuracy), 
+    sd = sd(prediction_accuracy)
+  )
+
+# level mean  sd
+# 1     0.27  0.10 
+# 2     0.35  0.01
+# 3     0.27  0.10
+# 4     0.31  0.08
+# 5     0.24  0.10 
+# 6     0.30  0.09
+# 7     0.28  0.09
+# 8     0.31  0.08
+# 9     0.31  0.09
+# 10    0.26  0.01
